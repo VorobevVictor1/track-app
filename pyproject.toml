@@ -13,6 +13,7 @@ authors = [
 license = {text = "MIT"}
 
 dependencies = [
+    "opencv-python>=5.0.0.93",
     "pre-commit>=4.6.0",
     "ruff>=0.15.12",
 ]
