@@ -5,7 +5,7 @@ description = "Application for analysis of fission tracks in mineral grains"
 readme = "README.md"
 requires-python = "~=3.12.0"
 authors = [
-    {name = "Vorobyev Viktor", email = "your.email@example.com"},
+    {name = "Vorobyev Viktor", email = "vorobev.viu@phystech.edu"},
     {name = "Korotnev Viacheslav", email = "Korotnev.va@gmail.com"},
     {name = "Fedorov Vladimir", email = "your.email@example.com"},
 ]
@@ -15,7 +15,9 @@ license = {text = "MIT"}
 dependencies = [
     "opencv-python>=5.0.0.93",
     "pre-commit>=4.6.0",
+    "pymmcore-plus>=0.18.1",
     "pyqt6>=6.11.0",
+    "qtpy>=2.4.3",
     "ruff>=0.15.12",
 ]
 
