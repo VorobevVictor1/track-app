@@ -4,7 +4,8 @@
 [![License: MIT](https://shields.io)](https://opensource.org)
 
 Application for analysis of fission tracks in mineral grains.
-
+## External app needed
+before running main.py you should install [micro-manager](https://micro-manager.org/Download_Micro-Manager_Latest_Release) or propably read [this repo](https://github.com/pymmcore-plus/napari-micromanager). There is a guide how to use napari-micromanager plugin.
 ## Installation
 
 This project uses **uv** as its package and project manager.
