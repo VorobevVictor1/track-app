@@ -13,11 +13,15 @@ authors = [
 license = {text = "MIT"}
 
 dependencies = [
-    "opencv-python>=5.0.0.93",
-    "pre-commit>=4.6.0",
-    "pymmcore-plus>=0.18.1",
+    "magicgui>=0.10.2",
+    "matplotlib>=3.11.1",
+    "napari>=0.8.0",
+    "napari-metadata>=0.4.0",
+    "napari-micromanager>=0.3.1.post1",
+    "onnxruntime>=1.29.0",
+    "opencv-python-headless>=5.0.0.93",
     "pyqt6>=6.11.0",
-    "qtpy>=2.4.3",
+    "pre-commit>=4.6.0",
     "ruff>=0.15.12",
 ]
 
