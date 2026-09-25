@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import onnxruntime as ort
 
-MODEL = r"C:\Users\vivor\Desktop\Геохронология\Подсчет треков\napari-test\segm_model\HALtracks_2D.onnx"
+MODEL = r"segm_model\HALtracks_2D.onnx"
 SHORT = 2000
 CROP = 1800
 THRESH = 0.0  # порог по логитам (= 0.5 по вероятности)

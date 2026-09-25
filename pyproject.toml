@@ -107,7 +107,6 @@ ignore = [
     "S101",    # Use of assert
     "T201",    # print
     "RUF012",  # mutable class attributes
-    "ANN101",
     "N802"
 ]
 

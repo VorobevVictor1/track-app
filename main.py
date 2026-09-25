@@ -4,7 +4,7 @@ from napari.qt.threading import create_worker
 from src.track.funcs import *
 
 
-class BackgroundSmoothing(Container):
+class AutoCountWidget(Container):
     def __init__(self, viewer: "napari.viewer.Viewer"):
         super().__init__()
         self._viewer = viewer
@@ -101,7 +101,7 @@ if __name__ == "__main__":
     # Create a `viewer`
     viewer = napari.Viewer()
     # Instantiate your widget
-    my_widg = BackgroundSmoothing(viewer)
+    my_widg = AutoCountWidget(viewer)
     # Add widget to `viewer`
     viewer.window.add_dock_widget(my_widg)
     napari.run()

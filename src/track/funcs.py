@@ -1,13 +1,88 @@
 import cv2
 import numpy as np
 from napari_builtins._measure_shapes import ellipse_area, polygon_area, rectangle_area
-from segm_model.onnx_inference import predict_mask
+from track.modelling.onnx_inference import predict_mask
 from skimage.filters import threshold_isodata
 from skimage.measure import label
 from skimage.morphology import closing, opening
 
 
-def measure_area(shape_data_list, shape_type_list):
+def instance_segment(
+    img_transmitted: np.ndarray,
+    img_reflected: np.ndarray,
+    mask: np.ndarray,
+    sigma: float = 25,
+    gray_level: int = 128,
+) -> np.ndarray:
+    """
+    Performs full instance segmentation pipeline with coincidence mapping algorithm.
+
+    Args:
+        img_transmitted (np.ndarray): transmitted grain image RGB or grayscale
+        img_reflected (np.ndarray): reflected grain image of the same type as img_transmitted
+        mask (np.ndarray): ROI mask for segmentation postprocessing and track density calculation
+        sigma (float, optional): Dispersion for gaussian kernel. Defaults to 25.
+        gray_level (int, optional): Gray level shift. Defaults to 128.
+
+    Returns:
+        np.ndarray: instance segmentation labels
+    """
+    # TODO fix check of size equivalence
+    if img_transmitted.shape[:2] != img_reflected.shape[:2]:
+        return None
+
+    # TODO auto selection of gray level
+    # returns high pass img with flat background level
+    img_transmitted_hp = _background_correction(img_transmitted, sigma, gray_level)
+    img_reflected_hp = _background_correction(img_reflected, sigma, gray_level)
+
+    transmitted_features = _features_exctraction(img_transmitted_hp)
+    reflected_features = _features_exctraction(img_reflected_hp)
+
+    # coincedence mapping
+    res_binary = transmitted_features * reflected_features
+    # ROI mask application
+    if mask is not None:
+        res_binary = res_binary * mask
+
+    filtered_binary = _morph_filtering(res_binary)
+
+    labeled = label(filtered_binary).astype(np.uint16)
+
+    return labeled
+
+
+def segm_with_nn(
+    img_transmitted: np.ndarray,
+    img_reflected: np.ndarray,
+    mask: np.ndarray,
+    threshold: float,
+) -> np.ndarray:
+    """
+    Performs full instance segmentation pipeline with umap nn.
+
+    Args:
+        img_transmitted (np.ndarray): transmitted grain image RGB or grayscale
+        img_reflected (np.ndarray): reflected grain image of the same type as img_transmitted
+        mask (np.ndarray): ROI mask for segmentation postprocessing and track density calculation
+        threshold (float): logit threshold for segm postprocessing
+
+    Returns:
+        np.ndarray: instance segmentation labels
+    """
+    res_binary = predict_mask(img_reflected, img_transmitted, threshold)
+
+    # ROI mask application
+    if mask is not None:
+        res_binary = res_binary * mask
+
+    labeled = label(res_binary).astype(np.uint16)
+
+    return labeled
+
+
+def measure_area(shape_data_list, shape_type_list) -> float:
+    """calculates area of shapes"""
     vertices = shape_data_list[0]
     shape_type = shape_type_list[0]
     area = None
@@ -22,7 +97,20 @@ def measure_area(shape_data_list, shape_type_list):
     return area
 
 
-def background_correction(img, sigma, gray_level):
+def segm_postprocessing(labels: np.ndarray, area: float) -> float:
+    """Calculates tracks density"""
+    if area is not None:
+        num_of_tracks = np.count_nonzero(np.unique(labels))
+        tracks_density_by_pixel = num_of_tracks / area
+    else:
+        tracks_density_by_pixel = 0
+    return tracks_density_by_pixel
+
+
+def _background_correction(
+    img: np.ndarray, sigma: float, gray_level: int
+) -> np.ndarray:
+    """mitigate background brightness fluctuations"""
     if len(img.shape) > 2:
         grayscale = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
     else:
@@ -38,7 +126,8 @@ def background_correction(img, sigma, gray_level):
     return high_pass
 
 
-def features_exctraction(img):
+def _features_exctraction(img: np.ndarray) -> np.ndarray:
+    """perform segmentation by thresholding prepared image"""
     # calculates negative feature map: features pixels = 1 and background = 0
     # _, feature_map = cv2.threshold(img, threshold, 1, cv2.THRESH_BINARY_INV)
     iso_thresh = threshold_isodata(img)
@@ -46,59 +135,12 @@ def features_exctraction(img):
     return feature_map
 
 
-def morph_filtering(img, kernel_size=5, kernel_shape="square"):
-    "Filter thresholding noise"
+def _morph_filtering(img, kernel_size=5, kernel_shape="square") -> np.ndarray:
+    """Filter thresholding noise"""
     kernel = np.ones((kernel_size, kernel_size), dtype=np.uint8)
     opened = opening(img, kernel)
     closed = closing(opened, kernel)
     return closed
-
-
-def segm_postprocessing(labels: np.ndarray, area: float):
-    "Counting etc"
-    if area is not None:
-        num_of_tracks = np.count_nonzero(np.unique(labels))
-        tracks_density_by_pixel = num_of_tracks / area
-    else:
-        tracks_density_by_pixel = 0
-    return tracks_density_by_pixel
-
-
-def instance_segment(img_transmitted, img_reflected, mask, sigma=25, gray_level=128):
-    if img_transmitted.shape[:2] != img_reflected.shape[:2]:
-        return None
-
-    # TODO auto selection of gray level
-    # returns high pass img with flat background level
-    img_transmitted_hp = background_correction(img_transmitted, sigma, gray_level)
-    img_reflected_hp = background_correction(img_reflected, sigma, gray_level)
-
-    transmitted_features = features_exctraction(img_transmitted_hp)
-    reflected_features = features_exctraction(img_reflected_hp)
-
-    # coincedence mapping
-    res_binary = transmitted_features * reflected_features
-    # ROI mask application
-    if mask is not None:
-        res_binary = res_binary * mask
-
-    filtered_binary = morph_filtering(res_binary)
-
-    labeled = label(filtered_binary).astype(np.uint16)
-
-    return labeled
-
-
-def segm_with_nn(img_transmitted, img_reflected, mask, threshold):
-    res_binary = predict_mask(img_reflected, img_transmitted, threshold)
-
-    # ROI mask application
-    if mask is not None:
-        res_binary = res_binary * mask
-
-    labeled = label(res_binary).astype(np.uint16)
-
-    return labeled
 
 
 # def flat_background(img: np.ndarray, cropping_window_size: int) -> "naptypes.ImageData":
@@ -137,9 +179,3 @@ def segm_with_nn(img_transmitted, img_reflected, mask, threshold):
 #     props = regionprops(edge)
 #     area = np.float64(sum(p.area for p in props))
 #     return edge, area
-
-# if __name__=='__main__':
-#     img1 = imread(r"C:\Users\vivor\Downloads\Test-for-VV\1a.jpg")
-#     img2 = imread(r"C:\Users\vivor\Downloads\Test-for-VV\1b.jpg")
-#     labels = instance_segment(img1, img2, None)
-#     print(segm_postprocessing(labels))
