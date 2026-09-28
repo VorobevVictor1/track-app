@@ -110,7 +110,7 @@ def segm_postprocessing(labels: np.ndarray, area: float) -> float:
 def _background_correction(
     img: np.ndarray, sigma: float, gray_level: int
 ) -> np.ndarray:
-    """mitigate background brightness fluctuations"""
+    """mitigates background brightness fluctuations"""
     if len(img.shape) > 2:
         grayscale = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
     else:
@@ -127,7 +127,7 @@ def _background_correction(
 
 
 def _features_exctraction(img: np.ndarray) -> np.ndarray:
-    """perform segmentation by thresholding prepared image"""
+    """performs segmentation by thresholding prepared image"""
     # calculates negative feature map: features pixels = 1 and background = 0
     # _, feature_map = cv2.threshold(img, threshold, 1, cv2.THRESH_BINARY_INV)
     iso_thresh = threshold_isodata(img)
@@ -136,7 +136,7 @@ def _features_exctraction(img: np.ndarray) -> np.ndarray:
 
 
 def _morph_filtering(img, kernel_size=5, kernel_shape="square") -> np.ndarray:
-    """Filter thresholding noise"""
+    """Filters thresholding noise"""
     kernel = np.ones((kernel_size, kernel_size), dtype=np.uint8)
     opened = opening(img, kernel)
     closed = closing(opened, kernel)
