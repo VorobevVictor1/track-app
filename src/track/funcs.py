@@ -97,14 +97,15 @@ def measure_area(shape_data_list, shape_type_list) -> float:
     return area
 
 
-def segm_postprocessing(labels: np.ndarray, area: float) -> float:
+def segm_postprocessing(labels: np.ndarray, area: float, scale: float) -> float:
     """Calculates tracks density"""
     if area is not None:
         num_of_tracks = np.count_nonzero(np.unique(labels))
         tracks_density_by_pixel = num_of_tracks / area
+        tracks_density = tracks_density_by_pixel * scale**2
     else:
-        tracks_density_by_pixel = 0
-    return tracks_density_by_pixel
+        tracks_density = 0
+    return tracks_density
 
 
 def _background_correction(
@@ -143,39 +144,49 @@ def _morph_filtering(img, kernel_size=5, kernel_shape="square") -> np.ndarray:
     return closed
 
 
-# def flat_background(img: np.ndarray, cropping_window_size: int) -> "naptypes.ImageData":
-#     if len(img.shape) > 2:
-#         grayscale = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-#     else:
-#         grayscale = img.astype(np.uint8)
-#     fourier_tr = np.fft.fft2(grayscale)
-#     shifted_ft = np.fft.fftshift(fourier_tr)
-#     rows, cols = shifted_ft.shape
-#     crow, ccol = rows//2, cols//2
-#     # 3. Create a Bandpass Mask
-#     mask = np.zeros((rows, cols), np.uint8)
+def frame_postproc(video_buffer: np.ndarray) -> np.ndarray:
+    """
+    Постобработка кадров видеопотока, получаемого от pymmcore-plus.
+    """
+    height, width = video_buffer.shape
+    if video_buffer.dtype == np.uint32:
+        pix_type = np.uint8
+    elif video_buffer.dtype == np.uint64:
+        pix_type = np.uint16
+    else:
+        raise ValueError(
+            f"Неизвестный тип пикселей для toupcam: {video_buffer.dtype!r}. "
+            f"Допустимые: np.uint32, np.uint64."
+        )
 
-#     # Generate a grid of distances from the center
-#     y, x = np.ogrid[-crow:rows-crow, -ccol:cols-ccol]
-#     distance = np.sqrt(x*x + y*y)
+    # 1. Раскладываем матрицу uint32 на 4 отдельных байта по третьей оси.
+    # Теперь массив имеет форму [Height, Width, 4] и тип uint8.
+    bytes_array = video_buffer.view(pix_type).reshape(height, width, 4)
 
-#     # Keep only frequencies between low_cutoff and high_cutoff
-#     bandpass_area = (distance >= cropping_window_size)
-#     mask[bandpass_area] = 1
+    # 2. Выделяем память под итоговый uint8 массив [Height, Width, 3]
+    rgb_img = np.zeros((height, width, 3), dtype=pix_type)
 
-#     # 4. Apply mask and inverse DFT
-#     fshift = shifted_ft * mask
-#     f_ishift = np.fft.ifftshift(fshift)
-#     img_back = np.fft.ifft2(f_ishift)
-#     img_back = np.real(img_back)
-#     return img_back
+    # 3. Достаем каналы из байтов.
+    # В упакованном uint32 (BGRA) байты идут строго друг за другом.
+    # Сразу переводим в uint8 и масштабируем (<< 8), чтобы получить диапазон 0-65535.
 
-# def sobel_filter(img: np.ndarray, threshold: float) -> tuple["naptypes.LabelsData", "np.float64"]:
-#     sobelx = cv2.Sobel(img, cv2.CV_64F, 1, 0, ksize=3)
-#     sobely = cv2.Sobel(img, cv2.CV_64F, 0, 1, ksize=3)
-#     grad = np.sqrt(sobelx**2 + sobely**2)
-#     grad = np.uint8(np.clip(grad, 0, 255))
-#     _, edge = cv2.threshold(grad, threshold, 255, cv2.THRESH_BINARY)
-#     props = regionprops(edge)
-#     area = np.float64(sum(p.area for p in props))
-#     return edge, area
+    # Предполагаем стандартный для ToupCam порядок BGRA (байт 0 = B, байт 1 = G, байт 2 = R):
+    b = bytes_array[:, :, 0].astype(pix_type)
+    g = bytes_array[:, :, 1].astype(pix_type)
+    r = bytes_array[:, :, 2].astype(pix_type)
+
+    rgb_img[:, :, 0] = r  # Red
+    rgb_img[:, :, 1] = g  # Green
+    rgb_img[:, :, 2] = b  # Blue
+    return rgb_img
+
+
+def translate_layer(layer):
+    """Calculates new translation values for some layer based on given layer shape"""
+    if layer is not None:
+        # Move the layer along the X-axis
+        current_translation = list(layer.translate)
+        current_translation[-1] = layer.data.shape[
+            1
+        ]  # Modifying the last dimension (X)
+        return current_translation
