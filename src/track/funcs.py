@@ -85,7 +85,6 @@ def measure_area(shape_data_list, shape_type_list) -> float:
     """calculates area of shapes"""
     vertices = shape_data_list[0]
     shape_type = shape_type_list[0]
-    area = None
     if shape_type == "polygon":
         area = polygon_area(vertices)
     elif shape_type == "rectangle":
@@ -94,13 +93,14 @@ def measure_area(shape_data_list, shape_type_list) -> float:
         area = ellipse_area(vertices)
     elif shape_type == "path" or shape_type == "line":
         area = 0
+    else:
+        raise ValueError("Unsupported shape type")
     return area
 
 
-def segm_postprocessing(labels: np.ndarray, area: float, scale: float) -> float:
+def density_calc(num_of_tracks: np.intp | int, area: float, scale: float) -> float:
     """Calculates tracks density"""
-    if area is not None:
-        num_of_tracks = np.count_nonzero(np.unique(labels))
+    if area != 0:
         tracks_density_by_pixel = num_of_tracks / area
         tracks_density = tracks_density_by_pixel * scale**2
     else:
@@ -146,7 +146,7 @@ def _morph_filtering(img, kernel_size=5, kernel_shape="square") -> np.ndarray:
 
 def frame_postproc(video_buffer: np.ndarray) -> np.ndarray:
     """
-    Постобработка кадров видеопотока, получаемого от pymmcore-plus.
+    Postprocessing of livestream frame from pymmcore-plus
     """
     height, width = video_buffer.shape
     if video_buffer.dtype == np.uint32:

@@ -1,12 +1,39 @@
 import napari
 from magicgui.widgets import Container, create_widget, ComboBox
 from napari.qt.threading import create_worker
-from src.track.funcs import *
+from src.track.funcs import (
+    instance_segment,
+    density_calc,
+    measure_area,
+    translate_layer,
+    segm_with_nn,
+    frame_postproc,
+)
 from superqt.utils import ensure_main_thread
+import numpy as np
+from enum import Enum
+from skimage.draw import ellipse, polygon
+
+from napari.experimental import link_layers
 
 
+class Objective(str, Enum):
+    X5 = "5X"
+    X10 = "10X"
+    X20 = "20X"
+    X50 = "50X"
+    X100 = "100X"
+
+
+# TODO: заменить на mmc.getPixelSizeUm в коде где надо. Добавить увеличения и объективы в mm_config
 # lenses scales in px/um
-LENS_SCALES = {"5X": 1.46, "10X": 2.91, "20X": 5.88, "50X": 14.53, "100X": 29.55}
+OBJECTIVE_PX_PER_UM = {
+    Objective.X5: 1.46,
+    Objective.X10: 2.91,
+    Objective.X20: 5.88,
+    Objective.X50: 14.53,
+    Objective.X100: 29.55,
+}
 
 
 class AutoCountWidget(Container):
@@ -23,6 +50,9 @@ class AutoCountWidget(Container):
         self._roi_layer = create_widget(
             label="ROI (Shapes)", annotation="napari.layers.Shapes"
         )
+        self._track_points_layer = create_widget(
+            label="Track points layer", annotation="napari.layers.Points"
+        )
         self._sigma_slider = create_widget(
             label="Sigma",
             annotation=float,
@@ -36,34 +66,47 @@ class AutoCountWidget(Container):
         )
         self._density_output = create_widget(
             label="Tracks density num/um^2",
-            annotation=float,
+            annotation=list[np.float32],
             is_result=True,
             options={"value": 0.0},
         )
+        self._tracks_num_output = create_widget(
+            label="Amount of tracks",
+            annotation=list[np.uint],
+            is_result=True,
+            options={"value": 0},
+        )
         self._run_button = create_widget(label="Run", widget_type="PushButton")
         self._magnification_combo = ComboBox(
-            value=list(LENS_SCALES.keys())[-1],
-            choices=LENS_SCALES.keys(),
             label="Objective",
+            choices=[objective.value for objective in Objective],
+            value=Objective.X100.value,
         )
         self._translate_button = create_widget(
             label="Translate", widget_type="PushButton"
         )
+        self._manual_calc_button = create_widget(
+            label="Calculate density", widget_type="PushButton"
+        )
         # connect your own callbacks
         self._run_button.clicked.connect(self._process_im)
         self._translate_button.clicked.connect(self._translate_photos)
+        self._manual_calc_button.clicked.connect(self._calc_manual)
         # append into/extend the container with your widgets
         self.extend(
             [
                 self._transm_image_layer,
                 self._refl_image_layer,
                 self._roi_layer,
+                self._track_points_layer,
                 self._sigma_slider,
                 self._gray_slider,
                 self._density_output,
+                self._tracks_num_output,
                 self._magnification_combo,
                 self._translate_button,
                 self._run_button,
+                self._manual_calc_button,
             ]
         )
 
@@ -71,7 +114,7 @@ class AutoCountWidget(Container):
         tr_image_layer = self._transm_image_layer.value
         refl_image_layer = self._refl_image_layer.value
         if refl_image_layer is None or tr_image_layer is None:
-            return
+            raise ValueError
         sigma = self._sigma_slider.value
         gray = self._gray_slider.value
         img_tr = tr_image_layer.data
@@ -86,7 +129,7 @@ class AutoCountWidget(Container):
                 mask = shapes_layer.to_masks(mask_shape=img_tr.shape[:2])
                 mask = np.reshape(mask, img_tr.shape[:2])
             else:
-                raise Exception
+                raise Exception("Currently onlu one ROI is implemented")
 
         worker = create_worker(
             instance_segment, img_tr, img_re, mask, sigma, gray, _start_thread=False
@@ -106,17 +149,19 @@ class AutoCountWidget(Container):
             self._viewer.add_labels(img, name=name, translate=translation)
 
         shapes_layer = self._roi_layer.value
-        area = None
         if shapes_layer is not None:
             if shapes_layer.nshapes == 1:
                 area = measure_area(shapes_layer.data, shapes_layer.shape_type)
             else:
                 raise Exception
-        scale = LENS_SCALES.get(self._magnification_combo.value)
-        self._density_output.value = segm_postprocessing(img, area, scale)
+        objective = Objective(self._magnification_combo.value)
+        px_per_um = OBJECTIVE_PX_PER_UM[objective]
+        num_of_tracks = np.count_nonzero(np.unique(img))
+        self._tracks_num_output.value = [num_of_tracks]
+        self._density_output.value = [density_calc(num_of_tracks, area, px_per_um)]
 
     def _translate_photos(self):
-        # TODO: fix the alignment. now after every press it is translated to right. This is wrong behaviour. Translation should be done only once
+
         tr_image_layer = self._transm_image_layer.value
         translation = translate_layer(tr_image_layer)
         tr_image_layer.translate = translation
@@ -133,7 +178,59 @@ class AutoCountWidget(Container):
         if name in self._viewer.layers:
             self._viewer.layers[name].translate = translation
 
+    def _calc_manual(self):
+        # get layers
+        roi_layer = self._roi_layer.value
+        track_points_layer = self._track_points_layer.value
+        if roi_layer is None or track_points_layer is None:
+            raise ValueError("ROI or Track layer are not stated.")
 
+        # get layers data
+        track_points_list = track_points_layer.data
+        if track_points_list.size == 0:
+            self._density_output.value = 0
+            return
+        if (track_points_list < 0).any():
+            raise ValueError(
+                "One of the tracks points has negative coordinate in layer coordinate system."
+            )
+        roi_shapes_list = roi_layer.data
+        if len(roi_shapes_list) == 0:
+            self._density_output.value = 0
+        for shape in roi_shapes_list:
+            if (shape < 0).any():
+                raise ValueError(
+                    "One of the ROI vertesies has negative coordinate in layer coordinate system."
+                )
+
+        # check whether point in roi
+        roi_masks = roi_layer.to_masks()
+        roi_shapes_types = roi_layer.shape_type
+        densities_list = []
+        tracks_nums_list = []
+        for shape, mask, sh_type in zip(roi_shapes_list, roi_masks, roi_shapes_types):
+            point_list = []
+            for point in track_points_list:
+                point_world = track_points_layer.data_to_world(point)
+                point_shapes = roi_layer.world_to_data(point_world)
+                try:
+                    ids = point_shapes.round().astype(np.uint, casting="same_value")
+                    if mask[ids[-2], ids[-1]]:
+                        point_list.append(point_shapes)
+                except:
+                    pass
+            area = measure_area([shape], [sh_type])
+            objective = Objective(self._magnification_combo.value)
+            px_per_um = OBJECTIVE_PX_PER_UM[objective]
+            num_of_tracks = len(point_list)
+            densities_list.append(density_calc(num_of_tracks, area, px_per_um))
+            tracks_nums_list.append(num_of_tracks)
+
+        self._density_output.value = densities_list
+        self._tracks_num_output.value = tracks_nums_list
+
+
+# Added custom frame postprocessing function
 @ensure_main_thread  # type: ignore [untyped-decorator]
 def _update_viewer(self, data: np.ndarray | None = None) -> None:
     """Update viewer with the latest image from the circular buffer."""
@@ -145,7 +242,7 @@ def _update_viewer(self, data: np.ndarray | None = None) -> None:
         except (RuntimeError, IndexError):
             # circular buffer empty
             return
-    if len(data.shape) == 2:
+    elif len(data.shape) == 2:
         data = frame_postproc(data)
     try:
         preview_layer = self.viewer.layers["preview"]
