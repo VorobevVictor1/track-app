@@ -1,28 +1,28 @@
 import napari
 from magicgui.widgets import Container, create_widget, ComboBox
-from napari.qt.threading import create_worker
+from napari.qt.threading import create_worker, FunctionWorker
+from napari.utils.notifications import show_warning
 from src.track.funcs import (
-    instance_segment,
     density_calc,
     measure_area,
     translate_layer,
-    segm_with_nn,
     frame_postproc,
+)
+from src.track.data_models import (
+    Objective,
+    SegmentationImageData,
+    SegmentationRequestClassic,
+    SegmentationRequestNN,
+    SegmentationResult,
+)
+from src.track.services.segmentation import (
+    SegmentationServiceClassic,
+    SegmentationServiceNN,
 )
 from superqt.utils import ensure_main_thread
 import numpy as np
-from enum import Enum
-from skimage.draw import ellipse, polygon
 
 from napari.experimental import link_layers
-
-
-class Objective(str, Enum):
-    X5 = "5X"
-    X10 = "10X"
-    X20 = "20X"
-    X50 = "50X"
-    X100 = "100X"
 
 
 # TODO: заменить на mmc.getPixelSizeUm в коде где надо. Добавить увеличения и объективы в mm_config
@@ -36,11 +36,41 @@ OBJECTIVE_PX_PER_UM = {
 }
 
 
-class AutoCountWidget(Container):
+class MainWidget(Container):
     def __init__(self, viewer: "napari.Viewer"):
         super().__init__()
+        
         self._viewer = viewer
-        # use create_widget to generate widgets from type annotations
+        self._segmentation_service = SegmentationServiceClassic()
+        self._worker = None
+        self._current_request: SegmentationRequestClassic|SegmentationRequestNN|None = None
+
+        self._buiild_ui()
+
+        # connect your own callbacks
+        self._run_button.clicked.connect(self._start_segmentation)
+        self._translate_button.clicked.connect(self._translate_photos)
+        self._manual_calc_button.clicked.connect(self._calc_manual)
+        # append into/extend the container with your widgets
+        self.extend(
+            [
+                self._transm_image_layer,
+                self._refl_image_layer,
+                self._roi_layer,
+                self._track_points_layer,
+                self._sigma_slider,
+                self._gray_slider,
+                self._density_output,
+                self._tracks_num_output,
+                self._magnification_combo,
+                self._translate_button,
+                self._run_button,
+                self._manual_calc_button,
+            ]
+        )
+
+    def _buiild_ui(self):
+        """Initializes ui elements for widget"""
         self._transm_image_layer = create_widget(
             label="Transmitted", annotation="napari.layers.Image"
         )
@@ -88,27 +118,84 @@ class AutoCountWidget(Container):
         self._manual_calc_button = create_widget(
             label="Calculate density", widget_type="PushButton"
         )
-        # connect your own callbacks
-        self._run_button.clicked.connect(self._process_im)
-        self._translate_button.clicked.connect(self._translate_photos)
-        self._manual_calc_button.clicked.connect(self._calc_manual)
-        # append into/extend the container with your widgets
-        self.extend(
-            [
-                self._transm_image_layer,
-                self._refl_image_layer,
-                self._roi_layer,
-                self._track_points_layer,
-                self._sigma_slider,
-                self._gray_slider,
-                self._density_output,
-                self._tracks_num_output,
-                self._magnification_combo,
-                self._translate_button,
-                self._run_button,
-                self._manual_calc_button,
-            ]
+
+    def _start_segmentation(self):
+        """Starts segmentation worker process"""
+        if self._worker is not None and self._worker.is_running:
+            return
+        
+        try:
+            request = self._build_segmentation_request()
+        except ValueError as exc:
+            show_warning(str(exc))
+            return
+        
+        self._current_request = request
+        self._run_button.enabled = False
+
+        worker = create_worker(
+            self._segmentation_service.run,
+            request,
+            _start_thread=False
         )
+        # worker.returned.connect(self._on_segmentation_result) TODO: implement
+        worker.returned.connect(self._upd_widget)
+        worker.errored.connect(self._on_segmentation_error)
+        worker.finished.connect(self._on_worker_finished)
+
+        self._worker = worker
+        worker.start()
+
+    def _build_segmentation_request(self) -> SegmentationRequestClassic|SegmentationRequestNN:
+        """Creates a data snapshot for segmentation worker"""
+        #prepare images
+        refl_layer = self._refl_image_layer.value
+        tr_layer = self._transm_image_layer.value
+
+        if tr_layer is None or refl_layer is None:
+            raise ValueError("Select both transmitted and reflected image")
+        
+        refl_img = refl_layer.data
+        tr_img = tr_layer.data
+
+        #TODO: rewrite so rgb images could be detected correctly
+        if refl_img.ndim > 3 or tr_img.ndim > 3:
+            raise ValueError("Only 2D images currently supported")
+        
+        if refl_img.shape != tr_img.shape:
+            raise ValueError("Images must have the same shape")
+        
+        #prepare ROI mask
+        roi_shapes_layer = self._roi_layer.value
+        if roi_shapes_layer is None or roi_shapes_layer.nshapes == 0:
+            mask = None
+        elif roi_shapes_layer.nshapes > 1:
+            raise ValueError("Only 1 ROI is currently supported") #TODO: implement several ROIs and excluding ROI
+        else:
+            #there is only 1 mask in masks ndarray so we get it by id
+            mask = roi_shapes_layer.to_masks(mask_shape=tr_img.shape[:2])[0]
+
+        image_data = SegmentationImageData(
+            reflected_img=refl_img,
+            transmitted_img=tr_img,
+            roi_mask=mask
+        )
+        return SegmentationRequestClassic(
+            segmentation_image_data=image_data,
+            sigma=self._sigma_slider.value,
+            gray_level=self._gray_slider.value
+        )
+
+    def  _on_segmentation_result(self, result: SegmentationResult):
+        pass
+
+    def _on_segmentation_error(self, exc):
+        show_warning(f"Segmentation failed: {exc}")
+
+    def _on_worker_finished(self):
+        self._worker = None
+        self._current_request = None
+        self._run_button.enabled = True
 
     def _process_im(self):
         tr_image_layer = self._transm_image_layer.value
@@ -138,7 +225,8 @@ class AutoCountWidget(Container):
         worker.returned.connect(self._upd_widget)
         worker.start()
 
-    def _upd_widget(self, img):
+    def _upd_widget(self, result: SegmentationResult):
+        img = result.labels
         name = self._transm_image_layer.value.name + "_segmented"
         # Update existing layer (if present) or add new labels layer
         translation = self._transm_image_layer.value.translate
@@ -228,6 +316,7 @@ class AutoCountWidget(Container):
 
         self._density_output.value = densities_list
         self._tracks_num_output.value = tracks_nums_list
+        # TODO: area recalculation based on affine transform
 
 
 # Added custom frame postprocessing function
@@ -273,7 +362,7 @@ if __name__ == "__main__":
     # Create a `viewer`
     viewer = napari.Viewer()
     # Instantiate your widget
-    my_widg = AutoCountWidget(viewer)
+    my_widg = MainWidget(viewer)
 
     # Add widget to `viewer`
     viewer.window.add_dock_widget(my_widg)
