@@ -8,9 +8,9 @@ from enum import Enum
 class SegmentationImageData:
     reflected_img: ndarray
     transmitted_img: ndarray
+    output_layer_name: str
+    translation: ndarray
     roi_mask: ndarray | None = None
-    # output_layer_name: str
-    # translation: tuple[float, ...]
     # area_px: float | None = 0
     # px_per_um: float
 
