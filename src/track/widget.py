@@ -14,7 +14,6 @@ from .data_models import (
     SegmentationRequestNN,
     SegmentationResult,
     CalculationRequest,
-    CalculationResult,
 )
 from .services.segmentation import (
     SegmentationServiceClassic,
@@ -26,6 +25,7 @@ from .services.roi_processing import shapes_to_mask_and_area
 import numpy as np
 
 from napari.experimental import link_layers
+from napari.utils.transforms import Affine
 
 
 # TODO: заменить на mmc.getPixelSizeUm в коде где надо. Добавить увеличения и объективы в mm_config
@@ -281,30 +281,31 @@ class MainWidget(Container):
                 raise ValueError(
                     "One of the ROI vertesies has negative coordinate in layer coordinate system."
                 )
-
+        shape = self._refl_image_layer.value.data.shape[:2]
         # check whether point in roi
-        roi_masks = roi_layer.to_masks()
-        roi_shapes_types = roi_layer.shape_type
-        densities_list = []
-        tracks_nums_list = []
-        for shape, mask, sh_type in zip(roi_shapes_list, roi_masks, roi_shapes_types):
-            point_list = []
-            for point in track_points_list:
-                point_world = track_points_layer.data_to_world(point)
-                point_shapes = roi_layer.world_to_data(point_world)
-                try:
-                    ids = point_shapes.round().astype(np.uint, casting="same_value")
-                    if mask[ids[-2], ids[-1]]:
-                        point_list.append(point_shapes)
-                except:
-                    pass
-            area = measure_area([shape], [sh_type])
-            objective = Objective(self._magnification_combo.value)
-            px_per_um = OBJECTIVE_PX_PER_UM[objective]
-            num_of_tracks = len(point_list)
-            densities_list.append(density_calc(num_of_tracks, area, px_per_um))
-            tracks_nums_list.append(num_of_tracks)
+        mask, area = shapes_to_mask_and_area(roi_layer, shape)
+        # FIXME: fix affine transform usage
+        roi_sc_tr = Affine(scale=roi_layer.scale, translate=roi_layer.translate)
+        points_mask = track_points_layer.to_mask(
+            shape=shape,
+            data_to_world=roi_layer.affine.compose(roi_sc_tr),
+            isotropic_output=False,
+        )
+        self._layers_service.upsert_labels(
+            data=points_mask,
+            name="manual_calc",
+            translate=self._refl_image_layer.value.translate,
+        )
 
-        self._density_output.value = densities_list
-        self._tracks_num_output.value = tracks_nums_list
-        # TODO: area recalculation based on affine transform
+        # prepare objective scale
+        objective = Objective(self._magnification_combo.value)
+        px_per_um = OBJECTIVE_PX_PER_UM[objective]
+
+        response = self._calculations_service.process_calc_request(
+            CalculationRequest(
+                roi_mask=mask, px_per_um=px_per_um, area_px=area, tracks_map=points_mask
+            )
+        )
+
+        self._density_output.value = response.tracks_density
+        self._tracks_num_output.value = response.num_of_tracks

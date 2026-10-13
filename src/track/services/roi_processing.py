@@ -36,6 +36,7 @@ def _ellipse_area(vertices) -> float:
     return _rectangle_area(vertices) * np.pi / 4
 
 
+# TODO: area recalc based on layer affine transform
 def measure_shape_area(shape_verticies: np.ndarray, shape_type: str) -> float:
     """calculates area of shapes"""
     if shape_type == "polygon":
@@ -50,7 +51,7 @@ def measure_shape_area(shape_verticies: np.ndarray, shape_type: str) -> float:
 
 
 def shapes_to_mask_and_area(
-    shapes_layer, mask_shape: np.ndarray
+    shapes_layer, mask_shape: np.ndarray | None
 ) -> tuple[np.ndarray | None, float]:
     if shapes_layer is None or shapes_layer.nshapes == 0:
         return None, 0.0
