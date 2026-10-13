@@ -70,6 +70,7 @@ def _update_viewer(self, data: np.ndarray | None = None) -> None:
     if self._live_timer_id is None:
         self.viewer.reset_view()
 
+
 def apply_mm_live_view_patch(need_to_apply: bool):
     if need_to_apply:
         import napari_micromanager._core_link as core_link

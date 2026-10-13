@@ -1,5 +1,5 @@
 import numpy as np
-#from napari_builtins._measure_shapes import ellipse_area, polygon_area, rectangle_area
+# from napari_builtins._measure_shapes import ellipse_area, polygon_area, rectangle_area
 
 
 def _polygon_area(vertices) -> np.float64:
@@ -51,7 +51,9 @@ def measure_area(shape_data_list, shape_type_list) -> np.float64:
     return area
 
 
-def density_calc(num_of_tracks: np.intp | int, area: np.float64, scale: float) -> np.float64:
+def density_calc(
+    num_of_tracks: np.intp | int, area: np.float64, scale: float
+) -> np.float64:
     """Calculates tracks density"""
     if area != 0:
         tracks_density_by_pixel = num_of_tracks / area

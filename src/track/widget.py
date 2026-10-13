@@ -1,28 +1,28 @@
 from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
     import napari
 
 from magicgui.widgets import Container, create_widget, ComboBox
 from napari.qt.threading import create_worker
 from napari.utils.notifications import show_warning
-from .funcs import (
-    density_calc,
-    measure_area
-)
+from .funcs import density_calc, measure_area
 from .data_models import (
     Objective,
     SegmentationImageData,
     SegmentationRequestClassic,
     SegmentationRequestNN,
     SegmentationResult,
+    CalculationRequest,
+    CalculationResult,
 )
 from .services.segmentation import (
     SegmentationServiceClassic,
     SegmentationServiceNN,
 )
-from .services.layers import (
-    NapariLayersService
-)
+from .services.calculations import CalculationService
+from .services.layers import NapariLayersService
+from .services.roi_processing import shapes_to_mask_and_area
 import numpy as np
 
 from napari.experimental import link_layers
@@ -42,15 +42,18 @@ OBJECTIVE_PX_PER_UM = {
 class MainWidget(Container):
     def __init__(self, viewer: "napari.Viewer"):
         super().__init__()
-        
+
         self._viewer = viewer
         self._segmentation_service = SegmentationServiceClassic()
         self._layers_service = NapariLayersService(self._viewer)
+        self._calculations_service = CalculationService()
         self._worker = None
-        self._current_request: SegmentationRequestClassic|SegmentationRequestNN|None = None
-        self._last_output_layer_name: str|None = None 
+        self._current_segm_request: (
+            SegmentationRequestClassic | SegmentationRequestNN | None
+        ) = None
+        self._current_calc_request: CalculationRequest | None = None
+        self._last_output_layer_name: str | None = None
         self._build_ui()
-
 
         # connect your own callbacks
         self._run_button.clicked.connect(self._start_segmentation)
@@ -101,13 +104,13 @@ class MainWidget(Container):
         )
         self._density_output = create_widget(
             label="Tracks density num/um^2",
-            annotation=list[np.float32],
+            annotation=float,
             is_result=True,
             options={"value": 0.0},
         )
         self._tracks_num_output = create_widget(
             label="Amount of tracks",
-            annotation=list[np.uint],
+            annotation=int,
             is_result=True,
             options={"value": 0},
         )
@@ -128,20 +131,19 @@ class MainWidget(Container):
         """Starts segmentation worker process"""
         if self._worker is not None and self._worker.is_running:
             return
-        
+
         try:
-            request = self._build_segmentation_request()
+            segm_request, calc_request = self._build_requests()
         except ValueError as exc:
             show_warning(str(exc))
             return
-        
-        self._current_request = request
+
+        self._current_segm_request = segm_request
+        self._current_calc_request = calc_request
         self._run_button.enabled = False
 
         worker = create_worker(
-            self._segmentation_service.run,
-            request,
-            _start_thread=False
+            self._segmentation_service.run, segm_request, _start_thread=False
         )
         worker.returned.connect(self._on_segmentation_result)
         worker.errored.connect(self._on_segmentation_error)
@@ -150,61 +152,68 @@ class MainWidget(Container):
         self._worker = worker
         worker.start()
 
-    def _build_segmentation_request(self) -> SegmentationRequestClassic|SegmentationRequestNN:
+    def _build_requests(
+        self,
+    ) -> tuple[SegmentationRequestClassic | SegmentationRequestNN, CalculationRequest]:
         """Creates a data snapshot for segmentation worker"""
-        #prepare images
+        # prepare images
         refl_layer = self._refl_image_layer.value
         tr_layer = self._transm_image_layer.value
 
         if tr_layer is None or refl_layer is None:
             raise ValueError("Select both transmitted and reflected image")
-        
+
         refl_img = refl_layer.data
         tr_img = tr_layer.data
 
-        #TODO: rewrite so rgb images could be detected correctly
+        # TODO: rewrite so rgb images could be detected correctly
         if refl_img.ndim > 3 or tr_img.ndim > 3:
             raise ValueError("Only 2D images currently supported")
-        
+
         if refl_img.shape != tr_img.shape:
             raise ValueError("Images must have the same shape")
-        
-        #prepare ROI mask
+
+        # prepare ROI mask
         roi_shapes_layer = self._roi_layer.value
-        if roi_shapes_layer is None or roi_shapes_layer.nshapes == 0:
-            mask = None
-        elif roi_shapes_layer.nshapes > 1:
-            raise ValueError("Only 1 ROI is currently supported") #TODO: implement several ROIs and excluding ROI
-        else:
-            #there is only 1 mask in masks ndarray so we get it by id
-            mask = roi_shapes_layer.to_masks(mask_shape=tr_img.shape[:2])[0]
-        
+        mask, area = shapes_to_mask_and_area(roi_shapes_layer, tr_img.shape[:2])
+
+        # prepare objective scale
+        objective = Objective(self._magnification_combo.value)
+        px_per_um = OBJECTIVE_PX_PER_UM[objective]
+
         image_data = SegmentationImageData(
             reflected_img=refl_img,
             transmitted_img=tr_img,
             roi_mask=mask,
             output_layer_name=f"{refl_layer.name}_segmented",
-            translation=refl_layer.translate
+            translation=refl_layer.translate,
         )
-        return SegmentationRequestClassic(
+        segm_request = SegmentationRequestClassic(
             segmentation_image_data=image_data,
             sigma=self._sigma_slider.value,
-            gray_level=self._gray_slider.value
+            gray_level=self._gray_slider.value,
         )
+        calc_request = CalculationRequest(
+            roi_mask=mask, px_per_um=px_per_um, area_px=area
+        )
+        return segm_request, calc_request
 
     def _on_segmentation_error(self, exc):
         show_warning(f"Segmentation failed: {exc}")
 
-    def _on_worker_finished(self, status = None):
+    def _on_worker_finished(self, status=None):
         self._worker = None
-        self._current_request = None
+        self._current_segm_request = None
         self._run_button.enabled = True
 
     def _on_segmentation_result(self, result: SegmentationResult):
-        img = result.labels
-        request = self._current_request
-        name = request.segmentation_image_data.output_layer_name
-        translation = request.segmentation_image_data.translation
+        # add segmentation result to calculation request
+        self._current_calc_request.tracks_map = result.labels
+
+        segm_request = self._current_segm_request
+
+        name = segm_request.segmentation_image_data.output_layer_name
+        translation = segm_request.segmentation_image_data.translation
         # Update existing layer (if present) or add new labels layer
         self._layers_service.upsert_labels(
             result.labels,
@@ -213,34 +222,28 @@ class MainWidget(Container):
         )
         self._last_output_layer_name = name
 
-        shapes_layer = self._roi_layer.value
-        if shapes_layer is not None:
-            if shapes_layer.nshapes == 1:
-                area = measure_area(shapes_layer.data, shapes_layer.shape_type)
-            else:
-                raise Exception
-        else:
-            area = 0
+        calc_result = self._calculations_service.process_calc_request(
+            self._current_calc_request
+        )
 
-        objective = Objective(self._magnification_combo.value)
-        px_per_um = OBJECTIVE_PX_PER_UM[objective]
-        num_of_tracks = np.count_nonzero(np.unique(img))
-        self._tracks_num_output.value = [num_of_tracks]
-        self._density_output.value = [density_calc(num_of_tracks, area, px_per_um)]
-        
+        self._tracks_num_output.value = calc_result.num_of_tracks
+        self._density_output.value = calc_result.tracks_density
+
+        self._current_calc_request = None
+
     def _align_layers(self):
         refl_image_layer = self._refl_image_layer.value
-        
+
         if refl_image_layer is None:
             show_warning("There is nothing to allign")
             return
-        
+
         try:
             translation = self._layers_service.calc_layer_translation(refl_image_layer)
         except Exception as exc:
             show_warning(f"Translation calculation failed: {exc}")
             return
-        
+
         tr_image_layer = self._transm_image_layer.value
         roi_layer = self._roi_layer.value
         points_layer = self._track_points_layer.value

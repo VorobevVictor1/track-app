@@ -70,7 +70,7 @@ def instance_segment(
     """
     # TODO fix check of size equivalence
     if img_transmitted.shape[:2] != img_reflected.shape[:2]:
-        return None
+        raise ValueError("Shapes of images are not the same")
 
     # TODO auto selection of gray level
     # returns high pass img with flat background level

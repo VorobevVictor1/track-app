@@ -1,6 +1,7 @@
-from dataclasses import dataclass
-from numpy import ndarray
+from dataclasses import dataclass, field
+from numpy import ndarray, empty
 from enum import Enum
+from typing import NamedTuple
 
 
 # data needed for segmentation process
@@ -11,8 +12,6 @@ class SegmentationImageData:
     output_layer_name: str
     translation: ndarray
     roi_mask: ndarray | None = None
-    # area_px: float | None = 0
-    # px_per_um: float
 
 
 @dataclass(frozen=True)
@@ -32,7 +31,25 @@ class SegmentationRequestNN:
 @dataclass(frozen=True)
 class SegmentationResult:
     labels: ndarray
-    # density: float = 0
+
+
+# class ROI(NamedTuple):
+#     vertices: ndarray
+#     shape_type: str
+
+
+@dataclass
+class CalculationRequest:
+    roi_mask: ndarray | None
+    px_per_um: float
+    area_px: float
+    tracks_map: ndarray = field(default_factory=lambda: empty(0))
+
+
+@dataclass(frozen=True)
+class CalculationResult:
+    num_of_tracks: int
+    tracks_density: float
 
 
 # TODO: add integration with pymmcore_plus so objective types are not hardcoded
