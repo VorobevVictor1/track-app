@@ -33,9 +33,15 @@ class SegmentationResult:
     labels: ndarray
 
 
-# class ROI(NamedTuple):
-#     vertices: ndarray
-#     shape_type: str
+class ROIType(Enum):
+    INCLUDE = 1
+    EXCLUDE = -1
+
+
+class ROI(NamedTuple):
+    vertices: ndarray
+    shape_type: str
+    roi_type: ROIType = ROIType.INCLUDE
 
 
 @dataclass

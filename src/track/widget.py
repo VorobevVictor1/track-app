@@ -159,7 +159,7 @@ class MainWidget(Container):
         # prepare images
         refl_layer = self._refl_image_layer.value
         tr_layer = self._transm_image_layer.value
-
+       
         if tr_layer is None or refl_layer is None:
             raise ValueError("Select both transmitted and reflected image")
 
@@ -175,7 +175,8 @@ class MainWidget(Container):
 
         # prepare ROI mask
         roi_shapes_layer = self._roi_layer.value
-        mask, area = shapes_to_mask_and_area(roi_shapes_layer, tr_img.shape[:2])
+        mask, area = shapes_to_mask_and_area(roi_shapes_layer, tr_img.shape[:2], refl_layer.world_to_data)
+        self._viewer.add_labels(mask)
 
         # prepare objective scale
         objective = Objective(self._magnification_combo.value)
@@ -283,13 +284,10 @@ class MainWidget(Container):
                 )
         shape = self._refl_image_layer.value.data.shape[:2]
         # check whether point in roi
-        mask, area = shapes_to_mask_and_area(roi_layer, shape)
-        # FIXME: fix affine transform usage
-        roi_sc_tr = Affine(scale=roi_layer.scale, translate=roi_layer.translate)
+        mask, area = shapes_to_mask_and_area(roi_layer, shape, track_points_layer.world_to_data)
+        
         points_mask = track_points_layer.to_mask(
             shape=shape,
-            data_to_world=roi_layer.affine.compose(roi_sc_tr),
-            isotropic_output=False,
         )
         self._layers_service.upsert_labels(
             data=points_mask,
