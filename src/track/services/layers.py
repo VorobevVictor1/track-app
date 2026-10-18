@@ -4,6 +4,7 @@ if TYPE_CHECKING:
     import napari
     import napari.layers
 import numpy as np
+from ..data_models import OutputTranforms2D
 
 
 class NapariLayersService:
@@ -13,17 +14,20 @@ class NapariLayersService:
     def calc_layer_translation(self, layer: "napari.layers.Image") -> np.ndarray:
         """Calculates new translation values for some layer based on given layer shape"""
         if layer is not None:
+            # copy so current translate 100% stay untouched. Not sure how python links work
+            # TODO: make this clear
             current_translation = np.array(layer.translate, copy=True)
-            # if 2d not rgb, then last axis
-            if layer.data.ndim == 2:
-                current_translation[-1] = layer.data.shape[
-                    -1
-                ]  # Modifying the last dimension (X)
+            # check whether 2d and not rgb
+            if layer.ndim == 2 and layer.rgb:
+                current_translation[-1] = (
+                    layer.data.shape[  # in napari axes order is inverted
+                        -2  # last axis is 3 for 3 rgb channnels
+                    ]  # translate layers for the width of camera image
+                )
+            elif layer.ndim == 2 and not layer.rgb:
+                current_translation[-1] = layer.data.shape[-1]
             else:
-                # if rgb then second axis  TODO: fix for 3d rgb probably should check rgb property
-                current_translation[-1] = layer.data.shape[
-                    1
-                ]  # Modifying the last dimension (X)
+                raise ValueError("Currently only 2D images supported")
             return current_translation
 
     def translate_layers(
@@ -34,7 +38,7 @@ class NapariLayersService:
                 layer.translate = translation
 
     def upsert_labels(
-        self, data: np.ndarray, name: str, translate
+        self, data: np.ndarray, name: str, output_transforms: OutputTranforms2D
     ) -> "napari.layers.Layer":
         try:
             layer = self._viewer.layers[name]
@@ -42,5 +46,7 @@ class NapariLayersService:
         except KeyError:
             layer = self._viewer.add_labels(data, name=name)
 
-        layer.translate = translate
+        layer.translate = output_transforms.translate
+        layer.affine = output_transforms.affine_matrix
+        layer.scale = output_transforms.scale
         return layer

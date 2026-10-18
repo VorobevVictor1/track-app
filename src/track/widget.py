@@ -6,9 +6,9 @@ if TYPE_CHECKING:
 from magicgui.widgets import Container, create_widget, ComboBox
 from napari.qt.threading import create_worker
 from napari.utils.notifications import show_warning
-from .funcs import density_calc, measure_area
 from .data_models import (
     Objective,
+    OutputTranforms2D,
     SegmentationImageData,
     SegmentationRequestClassic,
     SegmentationRequestNN,
@@ -18,10 +18,10 @@ from .data_models import (
 from .services.segmentation import (
     SegmentationServiceClassic,
     SegmentationServiceNN,
-)
+)  # TODO: add segmentation mode selection
 from .services.calculations import CalculationService
 from .services.layers import NapariLayersService
-from .services.roi_processing import shapes_to_mask_and_area
+from .services.roi_processing import shapes_to_mask_and_area, points_to_mask
 import numpy as np
 
 from napari.experimental import link_layers
@@ -159,15 +159,14 @@ class MainWidget(Container):
         # prepare images
         refl_layer = self._refl_image_layer.value
         tr_layer = self._transm_image_layer.value
-       
+
         if tr_layer is None or refl_layer is None:
             raise ValueError("Select both transmitted and reflected image")
 
         refl_img = refl_layer.data
         tr_img = tr_layer.data
 
-        # TODO: rewrite so rgb images could be detected correctly
-        if refl_img.ndim > 3 or tr_img.ndim > 3:
+        if refl_layer.ndim > 2 or tr_layer.ndim > 2:
             raise ValueError("Only 2D images currently supported")
 
         if refl_img.shape != tr_img.shape:
@@ -175,19 +174,25 @@ class MainWidget(Container):
 
         # prepare ROI mask
         roi_shapes_layer = self._roi_layer.value
-        mask, area = shapes_to_mask_and_area(roi_shapes_layer, tr_img.shape[:2], refl_layer.world_to_data)
-        self._viewer.add_labels(mask)
+        mask, area = shapes_to_mask_and_area(
+            roi_shapes_layer, tr_img.shape[:2], refl_layer.world_to_data
+        )
 
         # prepare objective scale
         objective = Objective(self._magnification_combo.value)
         px_per_um = OBJECTIVE_PX_PER_UM[objective]
 
+        image_transforms = OutputTranforms2D(
+            affine_matrix=refl_layer.affine,
+            scale=refl_layer.scale,
+            translate=refl_layer.translate,
+        )
         image_data = SegmentationImageData(
             reflected_img=refl_img,
             transmitted_img=tr_img,
             roi_mask=mask,
             output_layer_name=f"{refl_layer.name}_segmented",
-            translation=refl_layer.translate,
+            transforms=image_transforms,
         )
         segm_request = SegmentationRequestClassic(
             segmentation_image_data=image_data,
@@ -214,12 +219,12 @@ class MainWidget(Container):
         segm_request = self._current_segm_request
 
         name = segm_request.segmentation_image_data.output_layer_name
-        translation = segm_request.segmentation_image_data.translation
+        output_tranform = segm_request.segmentation_image_data.transforms
         # Update existing layer (if present) or add new labels layer
         self._layers_service.upsert_labels(
             result.labels,
             name,
-            translation,
+            output_tranform,
         )
         self._last_output_layer_name = name
 
@@ -282,17 +287,24 @@ class MainWidget(Container):
                 raise ValueError(
                     "One of the ROI vertesies has negative coordinate in layer coordinate system."
                 )
-        shape = self._refl_image_layer.value.data.shape[:2]
+        if self._refl_image_layer.value is not None:
+            shape = self._refl_image_layer.value.data.shape[:2]
+            target_world_to_data = self._refl_image_layer.value.world_to_data
+        else:
+            raise ValueError("There is no tracks image.")
         # check whether point in roi
-        mask, area = shapes_to_mask_and_area(roi_layer, shape, track_points_layer.world_to_data)
-        
-        points_mask = track_points_layer.to_mask(
-            shape=shape,
-        )
+        mask, area = shapes_to_mask_and_area(roi_layer, shape, target_world_to_data)
+
+        points_mask = points_to_mask(track_points_layer, shape, target_world_to_data)
+
         self._layers_service.upsert_labels(
-            data=points_mask,
-            name="manual_calc",
-            translate=self._refl_image_layer.value.translate,
+            points_mask,
+            "manual_calc",
+            OutputTranforms2D(
+                affine_matrix=self._refl_image_layer.value.affine,  # returnes identical transform
+                scale=self._refl_image_layer.value.scale,
+                translate=self._refl_image_layer.value.translate,
+            ),
         )
 
         # prepare objective scale

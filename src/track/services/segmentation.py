@@ -68,7 +68,8 @@ def instance_segment(
     Returns:
         np.ndarray: instance segmentation labels
     """
-    # TODO fix check of size equivalence
+    if img_transmitted.ndim > 3 or img_reflected.ndim > 3:
+        raise ValueError("Only 2D images are currently supported")
     if img_transmitted.shape[:2] != img_reflected.shape[:2]:
         raise ValueError("Shapes of images are not the same")
 

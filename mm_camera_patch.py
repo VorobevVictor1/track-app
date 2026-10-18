@@ -51,7 +51,8 @@ def _update_viewer(self, data: np.ndarray | None = None) -> None:
         except (RuntimeError, IndexError):
             # circular buffer empty
             return
-    elif len(data.shape) == 2:
+
+    if data is not None and len(data.shape) == 2:
         data = frame_postproc(data)
     try:
         preview_layer = self.viewer.layers["preview"]

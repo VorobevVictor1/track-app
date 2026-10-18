@@ -18,7 +18,7 @@ class CalculationService:
             tracks_density = tracks_density_by_pixel * scale**2
         else:
             tracks_density = 0
-        return tracks_density
+        return round(tracks_density, 5)
 
     def tracks_calc(
         self, tracks_labels: np.ndarray, roi_mask: np.ndarray | None

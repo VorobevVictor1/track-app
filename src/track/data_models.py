@@ -2,15 +2,23 @@ from dataclasses import dataclass, field
 from numpy import ndarray, empty
 from enum import Enum
 from typing import NamedTuple
+from napari.utils.transforms import Affine
 
 
 # data needed for segmentation process
+@dataclass(frozen=True)
+class OutputTranforms2D:
+    affine_matrix: ndarray | Affine
+    scale: tuple[float, float]
+    translate: tuple[float, float]
+
+
 @dataclass(frozen=True)
 class SegmentationImageData:
     reflected_img: ndarray
     transmitted_img: ndarray
     output_layer_name: str
-    translation: ndarray
+    transforms: OutputTranforms2D
     roi_mask: ndarray | None = None
 
 
