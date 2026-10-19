@@ -1,7 +1,7 @@
 import numpy as np
 from ..data_models import ROI, ROIType
 from collections.abc import Callable
-from cv2 import fillConvexPoly, minAreaRect, ellipse, drawMarker, MARKER_CROSS
+from cv2 import fillPoly, minAreaRect, ellipse, drawMarker, MARKER_CROSS
 # from napari_builtins._measure_shapes import ellipse_area, polygon_area, rectangle_area
 
 from typing import TYPE_CHECKING
@@ -60,7 +60,7 @@ def measure_shape_area(shape_verticies: np.ndarray, shape_type: str) -> float:
 
 def _polygon_to_mask(verticies: np.ndarray, where_to_draw: np.ndarray) -> np.ndarray:
     reshaped_vertices = verticies.reshape((-1, 1, 2))
-    fillConvexPoly(where_to_draw, reshaped_vertices, 1)
+    fillPoly(where_to_draw, [reshaped_vertices], 1)
     return where_to_draw
 
 
