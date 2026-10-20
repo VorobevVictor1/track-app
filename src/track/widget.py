@@ -22,10 +22,9 @@ from .services.segmentation import (
 from .services.calculations import CalculationService
 from .services.layers import NapariLayersService
 from .services.roi_processing import shapes_to_mask_and_area, points_to_mask
-import numpy as np
-
+from .services import app_configuration as app_conf 
 from napari.experimental import link_layers
-from napari.utils.transforms import Affine
+
 
 
 # TODO: заменить на mmc.getPixelSizeUm в коде где надо. Добавить увеличения и объективы в mm_config
@@ -47,6 +46,12 @@ class MainWidget(Container):
         self._segmentation_service = SegmentationServiceClassic()
         self._layers_service = NapariLayersService(self._viewer)
         self._calculations_service = CalculationService()
+        
+        if app_conf.config_instance is not None:
+            self._config_service = app_conf.config_instance
+        else:
+            raise ValueError('Config object is not initialized')
+        
         self._worker = None
         self._current_segm_request: (
             SegmentationRequestClassic | SegmentationRequestNN | None
@@ -59,6 +64,7 @@ class MainWidget(Container):
         self._run_button.clicked.connect(self._start_segmentation)
         self._translate_button.clicked.connect(self._align_layers)
         self._manual_calc_button.clicked.connect(self._calc_manual)
+        self._save_current_buton.clicked.connect(self._save_grain_data)
         # append into/extend the container with your widgets
         self.extend(
             [
@@ -74,6 +80,7 @@ class MainWidget(Container):
                 self._translate_button,
                 self._run_button,
                 self._manual_calc_button,
+                self._save_current_buton,
             ]
         )
 
@@ -114,7 +121,6 @@ class MainWidget(Container):
             is_result=True,
             options={"value": 0},
         )
-        self._run_button = create_widget(label="Run", widget_type="PushButton")
         self._magnification_combo = ComboBox(
             label="Objective",
             choices=[objective.value for objective in Objective],
@@ -123,8 +129,14 @@ class MainWidget(Container):
         self._translate_button = create_widget(
             label="Translate", widget_type="PushButton"
         )
+        self._run_button = create_widget(
+            label="Auto calculation", widget_type="PushButton"
+        )
         self._manual_calc_button = create_widget(
             label="Calculate density", widget_type="PushButton"
+        )
+        self._save_current_buton = create_widget(
+            label="Save grain data", widget_type="PushButton"
         )
 
     def _start_segmentation(self):
@@ -319,3 +331,6 @@ class MainWidget(Container):
 
         self._density_output.value = response.tracks_density
         self._tracks_num_output.value = response.num_of_tracks
+
+    def _save_grain_data(self):
+        print(self._config_service.settings.sample_dir)

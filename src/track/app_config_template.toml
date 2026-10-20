@@ -1,0 +1,5 @@
+[sample]
+dir = "absolute/path/to/your/sample/folder"
+
+[app]
+apply_mm_patch = false
