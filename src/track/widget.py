@@ -3,9 +3,13 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import napari
 
+from pathlib import Path
+
 from magicgui.widgets import Container, create_widget, ComboBox
 from napari.qt.threading import create_worker
 from napari.utils.notifications import show_warning
+from napari.experimental import link_layers
+
 from .data_models import (
     Objective,
     OutputTranforms2D,
@@ -22,8 +26,8 @@ from .services.segmentation import (
 from .services.calculations import CalculationService
 from .services.layers import NapariLayersService
 from .services.roi_processing import shapes_to_mask_and_area, points_to_mask
-from .services import app_configuration as app_conf 
-from napari.experimental import link_layers
+from .services import app_configuration as app_conf
+from .services.grain_saver import save_img
 
 
 
@@ -46,12 +50,12 @@ class MainWidget(Container):
         self._segmentation_service = SegmentationServiceClassic()
         self._layers_service = NapariLayersService(self._viewer)
         self._calculations_service = CalculationService()
-        
+
         if app_conf.config_instance is not None:
             self._config_service = app_conf.config_instance
         else:
-            raise ValueError('Config object is not initialized')
-        
+            raise ValueError("Config object is not initialized")
+
         self._worker = None
         self._current_segm_request: (
             SegmentationRequestClassic | SegmentationRequestNN | None
@@ -287,30 +291,21 @@ class MainWidget(Container):
         if track_points_list.size == 0:
             self._density_output.value = 0
             return
-        if (track_points_list < 0).any():
-            raise ValueError(
-                "One of the tracks points has negative coordinate in layer coordinate system."
-            )
         roi_shapes_list = roi_layer.data
         if len(roi_shapes_list) == 0:
             self._density_output.value = 0
-        for shape in roi_shapes_list:
-            if (shape < 0).any():
-                raise ValueError(
-                    "One of the ROI vertesies has negative coordinate in layer coordinate system."
-                )
         if self._refl_image_layer.value is not None:
             shape = self._refl_image_layer.value.data.shape[:2]
             target_world_to_data = self._refl_image_layer.value.world_to_data
         else:
             raise ValueError("There is no tracks image.")
         # check whether point in roi
-        mask, area = shapes_to_mask_and_area(roi_layer, shape, target_world_to_data)
+        roi_mask, area = shapes_to_mask_and_area(roi_layer, shape, target_world_to_data)
 
         points_mask = points_to_mask(track_points_layer, shape, target_world_to_data)
 
         self._layers_service.upsert_labels(
-            points_mask,
+            points_mask * roi_mask,
             "manual_calc",
             OutputTranforms2D(
                 affine_matrix=self._refl_image_layer.value.affine,  # returnes identical transform
@@ -318,6 +313,7 @@ class MainWidget(Container):
                 translate=self._refl_image_layer.value.translate,
             ),
         )
+        self._last_output_layer_name = "manual_calc"
 
         # prepare objective scale
         objective = Objective(self._magnification_combo.value)
@@ -325,7 +321,10 @@ class MainWidget(Container):
 
         response = self._calculations_service.process_calc_request(
             CalculationRequest(
-                roi_mask=mask, px_per_um=px_per_um, area_px=area, tracks_map=points_mask
+                roi_mask=roi_mask,
+                px_per_um=px_per_um,
+                area_px=area,
+                tracks_map=points_mask,
             )
         )
 
@@ -333,4 +332,17 @@ class MainWidget(Container):
         self._tracks_num_output.value = response.num_of_tracks
 
     def _save_grain_data(self):
-        print(self._config_service.settings.sample_dir)
+        dir_path = Path(self._config_service.settings.sample_dir).resolve()
+        img_extension = '.png'
+
+        refl_data = self._refl_image_layer.value.data
+        refl_name = self._refl_image_layer.value.name + img_extension
+        refl_path = dir_path / refl_name
+
+        transm_data = self._transm_image_layer.value.data
+        transm_name = self._transm_image_layer.value.name + img_extension
+        transm_path = dir_path / transm_name
+        
+        save_img(refl_data, refl_path, img_extension)
+        save_img(transm_data, transm_path, img_extension)
+        

@@ -2,7 +2,7 @@ import napari
 from pathlib import Path
 from tomllib import TOMLDecodeError
 from src.track.widget import MainWidget
-import src.track.services.app_configuration as app_conf 
+import src.track.services.app_configuration as app_conf
 
 if __name__ == "__main__":
     APPLY_MM_PATCH = True
@@ -14,9 +14,10 @@ if __name__ == "__main__":
 
     # Create a `viewer`
     viewer = napari.Viewer()
-    #load config
+    
+    # load config
     try:
-        cfg_path = Path('app_config.toml')
+        cfg_path = Path("app_config.toml")
         app_conf.config_instance = app_conf.ConfigService.from_file(cfg_path)
     except TOMLDecodeError as e:
         raise TOMLDecodeError(f"Unable to initialize config: {e}")
@@ -24,9 +25,9 @@ if __name__ == "__main__":
     # Instantiate your widget
     my_widg = MainWidget(viewer)
 
-    # for tests
-    viewer.add_shapes(face_color="#ffffff00")
-    viewer.add_points(size=30)
+    # # for tests
+    # viewer.add_shapes(face_color="#ffffff00")
+    # viewer.add_points(size=30)
 
     # Add widget to `viewer`
     viewer.window.add_dock_widget(my_widg)
