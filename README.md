@@ -66,7 +66,3 @@ uv run python camera_check.py
 - **Lint & Format Code:** `uv run ruff check` / `uv run ruff format`
 - **Type Checking:** `uv run mypy src`
 - **Run Tests:** `uv run pytest`
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
