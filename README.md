@@ -1,7 +1,5 @@
 # tracks-app
 
-[![Python Version](https://shields.io)](https://python.org)
-[![License: MIT](https://shields.io)](https://opensource.org)
 
 Application for analysis of fission tracks in mineral grains.
 ## External app needed
