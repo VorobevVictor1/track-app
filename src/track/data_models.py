@@ -63,6 +63,7 @@ class CalculationRequest:
 @dataclass(frozen=True)
 class CalculationResult:
     num_of_tracks: int
+    area_um: float
     tracks_density: float
 
 

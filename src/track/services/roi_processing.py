@@ -59,13 +59,15 @@ def measure_shape_area(shape_verticies: np.ndarray, shape_type: str) -> float:
 
 
 def _polygon_to_mask(verticies: np.ndarray, where_to_draw: np.ndarray) -> np.ndarray:
-    reshaped_vertices = verticies.reshape((-1, 1, 2))
+    reshaped_vertices = np.rint(verticies.reshape((-1, 1, 2))).astype(
+        np.int32, casting="same_value"
+    )
     fillPoly(where_to_draw, [reshaped_vertices], 1)
     return where_to_draw
 
 
 def _ellipse_to_mask(verticies: np.ndarray, where_to_draw: np.ndarray) -> np.ndarray:
-    box = minAreaRect(verticies)
+    box = minAreaRect(verticies.astype(dtype=np.float32, casting="same_kind"))
     ellipse(where_to_draw, box, color=1, thickness=-1)
     return where_to_draw
 
@@ -138,10 +140,9 @@ def exctract_rois_data(shapes_layer, target_world_to_data: Callable) -> list[ROI
         vertices_target_data = np.apply_along_axis(
             target_world_to_data, axis=1, arr=vertices_world
         )
-        vertices_rounded = np.rint(vertices_target_data)
         roi_list.append(
             ROI(
-                vertices=vertices_rounded.astype(dtype=np.int32, casting="same_value"),
+                vertices=vertices_target_data,
                 shape_type=type,
             )
         )

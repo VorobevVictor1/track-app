@@ -4,11 +4,11 @@ if TYPE_CHECKING:
     import napari
 
 from pathlib import Path
+import re
 
 from magicgui.widgets import Container, create_widget, ComboBox
 from napari.qt.threading import create_worker
 from napari.utils.notifications import show_warning
-from napari.experimental import link_layers
 
 from .data_models import (
     Objective,
@@ -27,8 +27,12 @@ from .services.calculations import CalculationService
 from .services.layers import NapariLayersService
 from .services.roi_processing import shapes_to_mask_and_area, points_to_mask
 from .services import app_configuration as app_conf
-from .services.grain_saver import save_img
-
+from .services.data_io import (
+    save_img,
+    uppend_result_table,
+    save_source_data,
+    save_screenshot,
+)
 
 
 # TODO: заменить на mmc.getPixelSizeUm в коде где надо. Добавить увеличения и объективы в mm_config
@@ -66,7 +70,7 @@ class MainWidget(Container):
 
         # connect your own callbacks
         self._run_button.clicked.connect(self._start_segmentation)
-        self._translate_button.clicked.connect(self._align_layers)
+        self._align_button.clicked.connect(self._align_layers)
         self._manual_calc_button.clicked.connect(self._calc_manual)
         self._save_current_buton.clicked.connect(self._save_grain_data)
         # append into/extend the container with your widgets
@@ -80,8 +84,9 @@ class MainWidget(Container):
                 self._gray_slider,
                 self._density_output,
                 self._tracks_num_output,
+                self._area_output,
                 self._magnification_combo,
-                self._translate_button,
+                self._align_button,
                 self._run_button,
                 self._manual_calc_button,
                 self._save_current_buton,
@@ -125,14 +130,18 @@ class MainWidget(Container):
             is_result=True,
             options={"value": 0},
         )
+        self._area_output = create_widget(
+            label="ROI area in um^2",
+            annotation=float,
+            is_result=True,
+            options={"value": 0},
+        )
         self._magnification_combo = ComboBox(
             label="Objective",
             choices=[objective.value for objective in Objective],
             value=Objective.X100.value,
         )
-        self._translate_button = create_widget(
-            label="Translate", widget_type="PushButton"
-        )
+        self._align_button = create_widget(label="Align", widget_type="PushButton")
         self._run_button = create_widget(
             label="Auto calculation", widget_type="PushButton"
         )
@@ -250,6 +259,7 @@ class MainWidget(Container):
 
         self._tracks_num_output.value = calc_result.num_of_tracks
         self._density_output.value = calc_result.tracks_density
+        self._area_output.value = calc_result.area_um
 
         self._current_calc_request = None
 
@@ -283,7 +293,7 @@ class MainWidget(Container):
         # get layers
         roi_layer = self._roi_layer.value
         track_points_layer = self._track_points_layer.value
-        if roi_layer is None or track_points_layer is None:
+        if track_points_layer is None:
             raise ValueError("ROI or Track layer are not stated.")
 
         # get layers data
@@ -291,7 +301,10 @@ class MainWidget(Container):
         if track_points_list.size == 0:
             self._density_output.value = 0
             return
-        roi_shapes_list = roi_layer.data
+        try:
+            roi_shapes_list = roi_layer.data
+        except AttributeError:
+            roi_shapes_list = []
         if len(roi_shapes_list) == 0:
             self._density_output.value = 0
         if self._refl_image_layer.value is not None:
@@ -319,7 +332,7 @@ class MainWidget(Container):
         objective = Objective(self._magnification_combo.value)
         px_per_um = OBJECTIVE_PX_PER_UM[objective]
 
-        response = self._calculations_service.process_calc_request(
+        calc_result = self._calculations_service.process_calc_request(
             CalculationRequest(
                 roi_mask=roi_mask,
                 px_per_um=px_per_um,
@@ -328,21 +341,52 @@ class MainWidget(Container):
             )
         )
 
-        self._density_output.value = response.tracks_density
-        self._tracks_num_output.value = response.num_of_tracks
+        self._density_output.value = calc_result.tracks_density
+        self._tracks_num_output.value = calc_result.num_of_tracks
+        self._area_output.value = calc_result.area_um
 
     def _save_grain_data(self):
-        dir_path = Path(self._config_service.settings.sample_dir).resolve()
-        img_extension = '.png'
+        self._save_current_buton.enabled = False
+        try:
+            refl_im_layer = self._refl_image_layer.value
+            trans_im_layer = self._transm_image_layer.value
+            roi_layer = self._roi_layer.value
+            track_points_layer = self._track_points_layer.value
+            ldt_list = [
+                refl_im_layer,
+                trans_im_layer,
+                roi_layer,
+                track_points_layer,
+            ]
+            try:
+                track_mask_layer = self._viewer.layers[self._last_output_layer_name]
+                ldt_list.append(track_mask_layer)
+            except:
+                pass
 
-        refl_data = self._refl_image_layer.value.data
-        refl_name = self._refl_image_layer.value.name + img_extension
-        refl_path = dir_path / refl_name
+            # finds numbers in str
+            match = re.search(r"\d+", refl_im_layer.name)
+            if match:
+                grain_number = match.group(0)
+            else:
+                grain_number = "0"
+            dir_path = Path(self._config_service.settings.sample_dir).resolve()
 
-        transm_data = self._transm_image_layer.value.data
-        transm_name = self._transm_image_layer.value.name + img_extension
-        transm_path = dir_path / transm_name
-        
-        save_img(refl_data, refl_path, img_extension)
-        save_img(transm_data, transm_path, img_extension)
-        
+            save_source_data(
+                ldt_list, dir_path / "source_data" / ("GRAIN_" + grain_number)
+            )
+
+            uppend_result_table(
+                grain_number,
+                self._tracks_num_output.value,
+                self._area_output.value,
+                self._density_output.value,
+                dir_path / "подсчет.csv",
+            )
+
+            screenshot = self._viewer.export_figure(path=None, scale_factor=0.5)
+            save_screenshot(
+                screenshot, dir_path / "screenshots" / (grain_number + ".jpg")
+            )
+        finally:
+            self._save_current_buton.enabled = True

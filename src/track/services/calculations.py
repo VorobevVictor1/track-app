@@ -7,15 +7,18 @@ class CalculationService:
     def process_calc_request(self, request: CalculationRequest) -> CalculationResult:
         num_of_tracks = self.tracks_calc(request.tracks_map, request.roi_mask)
 
-        density = self.density_calc(num_of_tracks, request.area_px, request.px_per_um)
+        area = request.area_px / request.px_per_um**2
 
-        return CalculationResult(num_of_tracks=num_of_tracks, tracks_density=density)
+        density = self.density_calc(num_of_tracks, area)
 
-    def density_calc(self, num_of_tracks: int, area_px: float, scale: float) -> float:
+        return CalculationResult(
+            num_of_tracks=num_of_tracks, area_um=round(area, 2), tracks_density=density
+        )
+
+    def density_calc(self, num_of_tracks: int, area: float) -> float:
         """Calculates tracks density"""
-        if area_px != 0:
-            tracks_density_by_pixel = num_of_tracks / area_px
-            tracks_density = tracks_density_by_pixel * scale**2
+        if area != 0:
+            tracks_density = num_of_tracks / area
         else:
             tracks_density = 0
         return round(tracks_density, 5)
