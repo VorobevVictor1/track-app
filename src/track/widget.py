@@ -28,11 +28,11 @@ from .services.layers import NapariLayersService
 from .services.roi_processing import shapes_to_mask_and_area, points_to_mask
 from .services import app_configuration as app_conf
 from .services.data_io import (
-    save_img,
     uppend_result_table,
     save_source_data,
     save_screenshot,
 )
+# TODO: add data input
 
 
 # TODO: заменить на mmc.getPixelSizeUm в коде где надо. Добавить увеличения и объективы в mm_config
@@ -73,6 +73,7 @@ class MainWidget(Container):
         self._align_button.clicked.connect(self._align_layers)
         self._manual_calc_button.clicked.connect(self._calc_manual)
         self._save_current_buton.clicked.connect(self._save_grain_data)
+        self._load_widg.changed.connect(self._load_files)
         # append into/extend the container with your widgets
         self.extend(
             [
@@ -90,6 +91,7 @@ class MainWidget(Container):
                 self._run_button,
                 self._manual_calc_button,
                 self._save_current_buton,
+                self._load_widg,
             ]
         )
 
@@ -150,6 +152,9 @@ class MainWidget(Container):
         )
         self._save_current_buton = create_widget(
             label="Save grain data", widget_type="PushButton"
+        )
+        self._load_widg = create_widget(
+            label="Load data", annotation=Path, options={"mode": "rm"}
         )
 
     def _start_segmentation(self):
@@ -263,6 +268,7 @@ class MainWidget(Container):
 
         self._current_calc_request = None
 
+    # TODO: write new layers alignment
     def _align_layers(self):
         refl_image_layer = self._refl_image_layer.value
 
@@ -390,3 +396,24 @@ class MainWidget(Container):
             )
         finally:
             self._save_current_buton.enabled = True
+
+    def _load_files(self, paths: tuple[Path, ...]):
+        paths_set = set(paths)
+        for path in paths:
+            if path.suffix == ".toml":
+                continue
+            else:
+                config_filename = f"{path.stem}_meta.toml"
+                settings_path = path.with_name(config_filename)
+                if settings_path in paths_set:
+                    from tomllib import load
+
+                    with open(settings_path, "rb") as f:
+                        meta_dict = load(f)
+                else:
+                    meta_dict = {}
+                try:
+                    self._viewer.open(path, **meta_dict)
+                except Exception as e:
+                    show_warning(f"Unable to open file {path}. Error: {e}")
+                    continue

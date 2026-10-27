@@ -25,11 +25,19 @@ def gen_base_meta_dict(layer: napari.layers.Layer) -> dict:
     affine = layer.affine.affine_matrix.tolist()
     scale = layer.scale.tolist()
     translate = layer.translate.tolist()
+    opacity = layer.opacity
+    blending = layer.blending
+    projection_mode = layer.projection_mode
+    layer_type = layer._type_string
     return {
         "name": name,
         "affine": affine,
         "scale": scale,
         "translate": translate,
+        "opacity": opacity,
+        "blending": blending,
+        "projection_mode": projection_mode,
+        "layer_type": layer_type,
     }
 
 

@@ -1,4 +1,4 @@
-# tracks-app
+# COMET-FTA
 
 
 Application for analysis of fission tracks in mineral grains.

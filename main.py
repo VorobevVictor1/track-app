@@ -63,5 +63,6 @@ if __name__ == "__main__":
     viewer.add_points(size=30, face_color="red", border_color="red", symbol="cross")
 
     # Add widget to `viewer`
-    viewer.window.add_dock_widget(my_widg)
+    w = viewer.window.add_dock_widget(my_widg, name="COMET-FTA", menu=viewer.window.window_menu)
+    w.title.close_button.hide()
     napari.run()
