@@ -32,7 +32,7 @@ from .services.data_io import (
     save_source_data,
     save_screenshot,
 )
-# TODO: add data input
+from .services.focus_stacking import FocusStacker
 
 
 # TODO: заменить на mmc.getPixelSizeUm в коде где надо. Добавить увеличения и объективы в mm_config
@@ -54,6 +54,7 @@ class MainWidget(Container):
         self._segmentation_service = SegmentationServiceClassic()
         self._layers_service = NapariLayersService(self._viewer)
         self._calculations_service = CalculationService()
+        self._focus_stacking_service = FocusStacker()
 
         if app_conf.config_instance is not None:
             self._config_service = app_conf.config_instance
@@ -74,6 +75,7 @@ class MainWidget(Container):
         self._manual_calc_button.clicked.connect(self._calc_manual)
         self._save_current_buton.clicked.connect(self._save_grain_data)
         self._load_widg.changed.connect(self._load_files)
+        self._focus_stack.clicked.connect(self._stack_imgs)
         # append into/extend the container with your widgets
         self.extend(
             [
@@ -87,7 +89,9 @@ class MainWidget(Container):
                 self._tracks_num_output,
                 self._area_output,
                 self._magnification_combo,
+                self._swap_chb,
                 self._align_button,
+                self._focus_stack,
                 self._run_button,
                 self._manual_calc_button,
                 self._save_current_buton,
@@ -154,7 +158,14 @@ class MainWidget(Container):
             label="Save grain data", widget_type="PushButton"
         )
         self._load_widg = create_widget(
-            label="Load data", annotation=Path, options={"mode": "rm"}
+            label="Load data",
+            annotation=Path,
+            options={"mode": "rm"},
+            value=app_conf.config_instance.settings.sample_dir,
+        )
+        self._focus_stack = create_widget(label="Focus stack", widget_type="PushButton")
+        self._swap_chb = create_widget(
+            label="Swap refl&trans", widget_type="CheckBox"
         )
 
     def _start_segmentation(self):
@@ -268,51 +279,56 @@ class MainWidget(Container):
 
         self._current_calc_request = None
 
-    # TODO: write new layers alignment
     def _align_layers(self):
         refl_image_layer = self._refl_image_layer.value
+        tr_image_layer = self._transm_image_layer.value
 
-        if refl_image_layer is None:
+        if refl_image_layer is None or tr_image_layer is None:
             show_warning("There is nothing to allign")
             return
-
+        
+        #if not checked then base mode: trans on the right, refl on the left
+        if not self._swap_chb.value:
+            left_layer = refl_image_layer
+            right_layer = tr_image_layer
+        else:
+            left_layer = tr_image_layer
+            right_layer = refl_image_layer
+        
         try:
-            translation = self._layers_service.calc_layer_translation(refl_image_layer)
+            translation = self._layers_service.calc_layer_translation(left_layer)
         except Exception as exc:
             show_warning(f"Translation calculation failed: {exc}")
             return
 
-        tr_image_layer = self._transm_image_layer.value
-        roi_layer = self._roi_layer.value
-        points_layer = self._track_points_layer.value
+        measurements_layers = [self._roi_layer.value, self._track_points_layer.value] #may be None
+        try: #this layer may be not created yet
+            measurements_layers.append(self._viewer.layers[self._last_output_layer_name])
+        except:
+            pass
 
-        layers_list = [tr_image_layer, refl_image_layer, roi_layer, points_layer]
-        if (
-            self._last_output_layer_name is not None
-            and self._last_output_layer_name in self._viewer.layers
-        ):
-            layers_list.append(self._viewer.layers[self._last_output_layer_name])
-
-        self._layers_service.translate_layers(layers_list, translation)
+        self._layers_service.translate_layers(
+            left_layer=left_layer,
+            right_layer=right_layer,
+            measurements_layers = measurements_layers,
+            translation=translation
+        )
 
     def _calc_manual(self):
         # get layers
         roi_layer = self._roi_layer.value
         track_points_layer = self._track_points_layer.value
         if track_points_layer is None:
-            raise ValueError("ROI or Track layer are not stated.")
+            raise ValueError("Track points layer is not stated.")
 
         # get layers data
         track_points_list = track_points_layer.data
         if track_points_list.size == 0:
             self._density_output.value = 0
+            self._tracks_num_output.value = 0
+            self._area_output.value = 0
             return
-        try:
-            roi_shapes_list = roi_layer.data
-        except AttributeError:
-            roi_shapes_list = []
-        if len(roi_shapes_list) == 0:
-            self._density_output.value = 0
+        
         if self._refl_image_layer.value is not None:
             shape = self._refl_image_layer.value.data.shape[:2]
             target_world_to_data = self._refl_image_layer.value.world_to_data
@@ -327,7 +343,7 @@ class MainWidget(Container):
             points_mask * roi_mask,
             "manual_calc",
             OutputTranforms2D(
-                affine_matrix=self._refl_image_layer.value.affine,  # returnes identical transform
+                affine_matrix=self._refl_image_layer.value.affine,
                 scale=self._refl_image_layer.value.scale,
                 translate=self._refl_image_layer.value.translate,
             ),
@@ -356,17 +372,14 @@ class MainWidget(Container):
         try:
             refl_im_layer = self._refl_image_layer.value
             trans_im_layer = self._transm_image_layer.value
-            roi_layer = self._roi_layer.value
-            track_points_layer = self._track_points_layer.value
             ldt_list = [
                 refl_im_layer,
                 trans_im_layer,
-                roi_layer,
-                track_points_layer,
+                self._roi_layer.value,
+                self._track_points_layer.value,
             ]
             try:
-                track_mask_layer = self._viewer.layers[self._last_output_layer_name]
-                ldt_list.append(track_mask_layer)
+                ldt_list.append(self._viewer.layers[self._last_output_layer_name])
             except:
                 pass
 
@@ -376,6 +389,7 @@ class MainWidget(Container):
                 grain_number = match.group(0)
             else:
                 grain_number = "0"
+            
             dir_path = Path(self._config_service.settings.sample_dir).resolve()
 
             save_source_data(
@@ -399,15 +413,13 @@ class MainWidget(Container):
 
     def _load_files(self, paths: tuple[Path, ...]):
         paths_set = set(paths)
+        
         for path in paths:
-            if path.suffix == ".toml":
-                continue
-            else:
+            if path.suffix != ".toml":
                 config_filename = f"{path.stem}_meta.toml"
                 settings_path = path.with_name(config_filename)
                 if settings_path in paths_set:
                     from tomllib import load
-
                     with open(settings_path, "rb") as f:
                         meta_dict = load(f)
                 else:
@@ -415,5 +427,9 @@ class MainWidget(Container):
                 try:
                     self._viewer.open(path, **meta_dict)
                 except Exception as e:
-                    show_warning(f"Unable to open file {path}. Error: {e}")
-                    continue
+                    show_warning(f"Error: {e}")
+
+    def _stack_imgs(self):
+        imgs_list = list(self._load_widg.value)
+        stack = self._focus_stacking_service.focus_stack(imgs_list)
+        self._viewer.add_image(stack)

@@ -14,9 +14,7 @@ class NapariLayersService:
     def calc_layer_translation(self, layer: "napari.layers.Image") -> np.ndarray:
         """Calculates new translation values for some layer based on given layer shape"""
         if layer is not None:
-            # copy so current translate 100% stay untouched. Not sure how python links work
-            # TODO: make this clear
-            current_translation = np.array(layer.translate, copy=True)
+            current_translation = np.array(layer.translate)
             # check whether 2d and not rgb
             if layer.ndim == 2 and layer.rgb:
                 current_translation[-1] = (
@@ -31,9 +29,15 @@ class NapariLayersService:
             return current_translation
 
     def translate_layers(
-        self, layers_list: list["napari.layers.Layer"], translation: np.ndarray
+        self,
+        left_layer: "napari.layers.Layer",
+        right_layer: "napari.layers.Layer",
+        measurements_layers: list['napari.layers.Layer | None'],
+        translation: np.ndarray
     ) -> None:
-        for layer in layers_list:
+        left_layer.translate = np.zeros_like(translation)
+        right_layer.translate = translation
+        for layer in measurements_layers:
             if layer is not None:
                 layer.translate = translation
 
