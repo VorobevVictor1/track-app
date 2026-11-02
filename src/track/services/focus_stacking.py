@@ -60,11 +60,19 @@ class FocusStacker(object):
     # imgs must be aligned from foreground to background in a list. Fg is first bg is last
     def focus_stack(self, image_files: List[str]) -> np.ndarray:
         """Pipeline to focus stack a list of images."""
-        image_matrices = self._read_images(image_files)
-        images = self._align_images(image_matrices)
-        laplacian = self._compute_laplacian(images)
-        focus_stacked = self._find_focus_regions(images, laplacian)
-        return cv2.cvtColor(focus_stacked, cv2.COLOR_BGR2RGB)
+        # if isinstance(image_files[0], str):
+        #     image_matrices = self._read_images(image_files)
+        # else: #NOTE: временный костыль.
+        image_matrices = image_files
+        print('loaded')
+        # images = self._align_images(image_matrices)
+        print('aligned')
+        laplacian = self._compute_laplacian(image_matrices)
+        print('computed')
+        focus_stacked = self._find_focus_regions(image_matrices, laplacian)
+        print('found')
+        # return cv2.cvtColor(focus_stacked, cv2.COLOR_BGR2RGB)
+        return focus_stacked
 
     @staticmethod
     def _read_images(image_files: List[str]) -> List[np.ndarray]:

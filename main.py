@@ -1,13 +1,14 @@
 import napari
+from pymmcore_plus import CMMCorePlus
+
 from pathlib import Path
 from tomllib import TOMLDecodeError
-from src.track.widget import MainWidget
-import src.track.services.app_configuration as app_conf
-
 from math import pi, sqrt
-from src.track.widget import OBJECTIVE_PX_PER_UM
-from src.track.data_models import Objective
 import numpy as np
+
+from src.track.widget import MainWidget, OBJECTIVE_PX_PER_UM
+import src.track.services.app_configuration as app_conf
+from src.track.data_models import Objective
 
 
 def gen_circle_coords(square: float, scale: float) -> np.ndarray:
@@ -49,10 +50,7 @@ if __name__ == "__main__":
     # Create a `viewer`
     viewer = napari.Viewer()
 
-    # Instantiate your widget
-    my_widg = MainWidget(viewer)
-
-    # for tests
+    # # for tests
     viewer.add_shapes(
         data=gen_circle_coords(962.0, OBJECTIVE_PX_PER_UM[Objective.X100]),
         shape_type="ellipse",
@@ -62,9 +60,21 @@ if __name__ == "__main__":
     )
     viewer.add_points(size=30, face_color="red", border_color="red", symbol="cross")
 
+    # nmmw = viewer.window.add_plugin_dock_widget('napari-micromanager')
+    mmc = CMMCorePlus.instance()
+    
+    mmc.loadSystemConfiguration(r"C:\Program Files\Micro-Manager\MMConfig_demo.cfg")
+    # mmc.loadSystemConfiguration(r"C:\Program Files\Micro-Manager\touptek.cfg")
+    mmc.setAutoShutter(False)
+
+    # Instantiate your widget
+    my_widg = MainWidget(viewer, mmc)
+
     # Add widget to `viewer`
     w = viewer.window.add_dock_widget(
         my_widg, name="COMET-FTA", menu=viewer.window.window_menu
     )
     w.title.close_button.hide()
+
+
     napari.run()

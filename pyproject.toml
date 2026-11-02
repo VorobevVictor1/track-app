@@ -172,6 +172,7 @@ fail_under = 70
 [dependency-groups]
 dev = [
     "mypy>=2.1.0",
+    "pyinstaller>=6.22.3",
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
     "types-pyyaml>=6.0.12.20260518",

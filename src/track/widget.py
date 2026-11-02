@@ -5,6 +5,8 @@ if TYPE_CHECKING:
 
 from pathlib import Path
 import re
+from pymmcore_plus import CMMCorePlus
+from useq import MDASequence, ZAboveBelow, Position
 
 from magicgui.widgets import Container, create_widget, ComboBox
 from napari.qt.threading import create_worker
@@ -44,13 +46,35 @@ OBJECTIVE_PX_PER_UM = {
     Objective.X50: 14.53,
     Objective.X100: 29.55,
 }
-
+def gen_grain_number(layer_name: str) -> str:
+    # finds numbers in str
+    match = re.search(r"\d+", layer_name)
+    if match:
+        grain_number = match.group(0)
+    else:
+        grain_number = "0"
+    return grain_number
 
 class MainWidget(Container):
-    def __init__(self, viewer: "napari.Viewer"):
+    def __init__(self, viewer: "napari.Viewer", mmc_core: CMMCorePlus):
         super().__init__()
 
         self._viewer = viewer
+        
+        self._mmc = mmc_core
+        try:
+            self._mmc.mda.events.sequenceStarted.disconnect()
+            self._mmc.mda.events.sequenceFinished.disconnect()
+            self._mmc.mda.events.frameReady.disconnect()
+        except TypeError:
+            # Сигнал не был ни к чему подключен, игнорируем ошибку
+            pass
+        self._mmc.mda.events.frameReady.connect(self.on_mda_frame)
+        self._mmc.mda.events.sequenceFinished.connect(self.on_mda_finished)
+        
+        self._frame_buffer = []
+        self._pos_before_mda: Position = Position(x=self._mmc.getXPosition(), y=self._mmc.getYPosition(), z=self._mmc.getZPosition())
+        
         self._segmentation_service = SegmentationServiceClassic()
         self._layers_service = NapariLayersService(self._viewer)
         self._calculations_service = CalculationService()
@@ -76,6 +100,7 @@ class MainWidget(Container):
         self._save_current_buton.clicked.connect(self._save_grain_data)
         self._load_widg.changed.connect(self._load_files)
         self._focus_stack.clicked.connect(self._stack_imgs)
+        self._z_stack.clicked.connect(self._capture_z_stack)
         # append into/extend the container with your widgets
         self.extend(
             [
@@ -91,6 +116,7 @@ class MainWidget(Container):
                 self._magnification_combo,
                 self._swap_chb,
                 self._align_button,
+                self._z_stack,
                 self._focus_stack,
                 self._run_button,
                 self._manual_calc_button,
@@ -164,6 +190,7 @@ class MainWidget(Container):
             value=app_conf.config_instance.settings.sample_dir,
         )
         self._focus_stack = create_widget(label="Focus stack", widget_type="PushButton")
+        self._z_stack = create_widget(label='z_stack', widget_type="PushButton")
         self._swap_chb = create_widget(
             label="Swap refl&trans", widget_type="CheckBox"
         )
@@ -213,10 +240,17 @@ class MainWidget(Container):
         if refl_img.shape != tr_img.shape:
             raise ValueError("Images must have the same shape")
 
+        if not self._swap_chb.value:
+            right_layer = tr_layer
+            right_img = tr_img
+        else:
+            right_layer = refl_layer
+            right_img = refl_img
+        
         # prepare ROI mask
         roi_shapes_layer = self._roi_layer.value
         mask, area = shapes_to_mask_and_area(
-            roi_shapes_layer, tr_img.shape[:2], refl_layer.world_to_data
+            roi_shapes_layer, right_img.shape[:2], right_layer.world_to_data
         )
 
         # prepare objective scale
@@ -224,15 +258,17 @@ class MainWidget(Container):
         px_per_um = OBJECTIVE_PX_PER_UM[objective]
 
         image_transforms = OutputTranforms2D(
-            affine_matrix=refl_layer.affine,
-            scale=refl_layer.scale,
-            translate=refl_layer.translate,
+            affine_matrix=right_layer.affine,
+            scale=right_layer.scale,
+            translate=right_layer.translate,
         )
+        grain_number = gen_grain_number(refl_layer.name)
+
         image_data = SegmentationImageData(
             reflected_img=refl_img,
             transmitted_img=tr_img,
             roi_mask=mask,
-            output_layer_name=f"{refl_layer.name}_segmented",
+            output_layer_name=f"{grain_number}_segmented",
             transforms=image_transforms,
         )
         segm_request = SegmentationRequestClassic(
@@ -329,26 +365,34 @@ class MainWidget(Container):
             self._area_output.value = 0
             return
         
-        if self._refl_image_layer.value is not None:
-            shape = self._refl_image_layer.value.data.shape[:2]
-            target_world_to_data = self._refl_image_layer.value.world_to_data
+        if not self._swap_chb.value:
+            right_layer = self._transm_image_layer.value
+        else:
+            right_layer = self._refl_image_layer.value
+
+        if right_layer is not None:
+            shape = right_layer.data.shape[:2]
+            target_world_to_data = right_layer.world_to_data
         else:
             raise ValueError("There is no tracks image.")
         # check whether point in roi
         roi_mask, area = shapes_to_mask_and_area(roi_layer, shape, target_world_to_data)
 
         points_mask = points_to_mask(track_points_layer, shape, target_world_to_data)
-
+        
+        grain_number = gen_grain_number(self._refl_image_layer.value.name)
+        result_layer_name = f"{grain_number}_manual_calc"
+        
         self._layers_service.upsert_labels(
             points_mask * roi_mask,
-            "manual_calc",
+            result_layer_name,
             OutputTranforms2D(
-                affine_matrix=self._refl_image_layer.value.affine,
-                scale=self._refl_image_layer.value.scale,
-                translate=self._refl_image_layer.value.translate,
+                affine_matrix=right_layer.affine,
+                scale=right_layer.scale,
+                translate=right_layer.translate,
             ),
         )
-        self._last_output_layer_name = "manual_calc"
+        self._last_output_layer_name = result_layer_name
 
         # prepare objective scale
         objective = Objective(self._magnification_combo.value)
@@ -382,13 +426,8 @@ class MainWidget(Container):
                 ldt_list.append(self._viewer.layers[self._last_output_layer_name])
             except:
                 pass
-
-            # finds numbers in str
-            match = re.search(r"\d+", refl_im_layer.name)
-            if match:
-                grain_number = match.group(0)
-            else:
-                grain_number = "0"
+            
+            grain_number = gen_grain_number(refl_im_layer.name)
             
             dir_path = Path(self._config_service.settings.sample_dir).resolve()
 
@@ -430,6 +469,24 @@ class MainWidget(Container):
                     show_warning(f"Error: {e}")
 
     def _stack_imgs(self):
-        imgs_list = list(self._load_widg.value)
+        imgs_list = self._viewer.layers['stack'].data
         stack = self._focus_stacking_service.focus_stack(imgs_list)
-        self._viewer.add_image(stack)
+        self._viewer.add_image(stack, name='stacked')
+    
+    def on_mda_frame(self, img):
+        self._frame_buffer.append(img)
+    
+    def on_mda_finished(self):
+        from numpy import asarray
+        self._viewer.add_image(asarray(self._frame_buffer), multiscale=False, name='stack')
+        self._frame_buffer.clear()
+        self._mmc.setXYPosition(self._pos_before_mda.x, self._pos_before_mda.y)
+        self._mmc.setZPosition(self._pos_before_mda.z)
+
+    def _capture_z_stack(self):
+        self._pos_before_mda = Position(x=self._mmc.getXPosition(), y=self._mmc.getYPosition(), z=self._mmc.getZPosition())
+        mda_sequence = MDASequence(
+            z_plan=ZAboveBelow(go_up=True, above=3.0, below=0.0, step=0.3),
+            stage_positions=[self._pos_before_mda]
+        )
+        self._mmc.run_mda(mda_sequence)
