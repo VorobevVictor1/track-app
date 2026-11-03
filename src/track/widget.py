@@ -480,8 +480,14 @@ class MainWidget(Container):
         from numpy import asarray
         self._viewer.add_image(asarray(self._frame_buffer), multiscale=False, name='stack')
         self._frame_buffer.clear()
-        self._mmc.setXYPosition(self._pos_before_mda.x, self._pos_before_mda.y)
-        self._mmc.setZPosition(self._pos_before_mda.z)
+        if self._pos_before_mda.x is not None and self._pos_before_mda.y is not None:
+            self._mmc.setXYPosition(self._pos_before_mda.x, self._pos_before_mda.y)
+        else:
+            show_warning("Saved x or y position is None")
+        if self._pos_before_mda.z is not None:
+            self._mmc.setZPosition(self._pos_before_mda.z)
+        else:
+            show_warning("Saved z position is None")
 
     def _capture_z_stack(self):
         self._pos_before_mda = Position(x=self._mmc.getXPosition(), y=self._mmc.getYPosition(), z=self._mmc.getZPosition())

@@ -1,4 +1,5 @@
 import napari
+from napari.layers import LayerLock
 from pymmcore_plus import CMMCorePlus
 
 from pathlib import Path
@@ -51,15 +52,16 @@ if __name__ == "__main__":
     viewer = napari.Viewer()
 
     # # for tests
-    viewer.add_shapes(
+    sh_l = viewer.add_shapes(
         data=gen_circle_coords(962.0, OBJECTIVE_PX_PER_UM[Objective.X100]),
         shape_type="ellipse",
         edge_color="red",
         edge_width=5,
         face_color="#ffffff00",
     )
-    viewer.add_points(size=30, face_color="red", border_color="red", symbol="cross")
-
+    p_l = viewer.add_points(size=30, face_color="red", border_color="red", symbol="cross")
+    sh_l.locked = LayerLock.DELETION
+    p_l.locked = LayerLock.DELETION
     # nmmw = viewer.window.add_plugin_dock_widget('napari-micromanager')
     mmc = CMMCorePlus.instance()
     
