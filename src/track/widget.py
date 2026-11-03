@@ -337,16 +337,16 @@ class MainWidget(Container):
             show_warning(f"Translation calculation failed: {exc}")
             return
 
-        measurements_layers = [self._roi_layer.value, self._track_points_layer.value] #may be None
+        other_layers = []
         try: #this layer may be not created yet
-            measurements_layers.append(self._viewer.layers[self._last_output_layer_name])
+            other_layers.append(self._viewer.layers[self._last_output_layer_name])
         except:
             pass
 
-        self._layers_service.translate_layers(
+        self._layers_service.align_layers(
             left_layer=left_layer,
             right_layer=right_layer,
-            measurements_layers = measurements_layers,
+            other_layers = other_layers,
             translation=translation
         )
 

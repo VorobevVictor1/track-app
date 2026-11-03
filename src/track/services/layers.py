@@ -4,6 +4,7 @@ if TYPE_CHECKING:
     import napari
     import napari.layers
 import numpy as np
+from napari.utils.transforms import Affine
 from ..data_models import OutputTranforms2D
 
 
@@ -28,18 +29,18 @@ class NapariLayersService:
                 raise ValueError("Currently only 2D images supported")
             return current_translation
 
-    def translate_layers(
+    def align_layers(
         self,
         left_layer: "napari.layers.Layer",
         right_layer: "napari.layers.Layer",
-        measurements_layers: list['napari.layers.Layer | None'],
+        other_layers: list['napari.layers.Layer | None'],
         translation: np.ndarray
     ) -> None:
-        left_layer.translate = np.zeros_like(translation)
-        right_layer.translate = translation
-        for layer in measurements_layers:
+        left_layer.affine =Affine(translate=np.zeros_like(translation))
+        right_layer.affine = Affine(translate=translation)
+        for layer in other_layers:
             if layer is not None:
-                layer.translate = translation
+                layer.affine = Affine(translate=translation)
 
     def upsert_labels(
         self, data: np.ndarray, name: str, output_transforms: OutputTranforms2D
