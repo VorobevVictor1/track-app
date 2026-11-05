@@ -32,6 +32,8 @@ def gen_circle_coords(square: float, scale: float) -> np.ndarray:
     coords[3] = [1.0 + diam_px, 1.0]  # down_left
     return coords
 
+def points_text_update_cb(event):
+        event.source.text.refresh(event.source.features)
 
 if __name__ == "__main__":
     # load config
@@ -59,7 +61,17 @@ if __name__ == "__main__":
         edge_width=5,
         face_color="#ffffff00",
     )
-    p_l = viewer.add_points(size=30, face_color="red", border_color="red", symbol="cross")
+    
+    text_p = {
+        'string': '{index}',
+        'size': 20,
+        'color': 'red',
+        'anchor': 'upper_right',
+        'translation': [10, 40]
+    }
+    p_l = viewer.add_points(size=30, face_color="red", border_color="red", symbol="cross", text=text_p)
+    p_l.events.features.connect(points_text_update_cb)
+    
     sh_l.locked = LayerLock.DELETION
     p_l.locked = LayerLock.DELETION
     # nmmw = viewer.window.add_plugin_dock_widget('napari-micromanager')
