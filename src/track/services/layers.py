@@ -33,10 +33,10 @@ class NapariLayersService:
         self,
         left_layer: "napari.layers.Layer",
         right_layer: "napari.layers.Layer",
-        other_layers: list['napari.layers.Layer | None'],
-        translation: np.ndarray
+        other_layers: list["napari.layers.Layer | None"],
+        translation: np.ndarray,
     ) -> None:
-        left_layer.affine =Affine(translate=np.zeros_like(translation))
+        left_layer.affine = Affine(translate=np.zeros_like(translation))
         right_layer.affine = Affine(translate=translation)
         for layer in other_layers:
             if layer is not None:

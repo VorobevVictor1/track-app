@@ -1,4 +1,4 @@
-'''
+"""
 This file was dawnloaded from https://github.com/momonala/focus-stack/blob/master/focus_stack/focus_stack.py.
 This code snippet has MIT license.
 The MIT License
@@ -22,7 +22,8 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
-'''
+"""
+
 """
 This code and algorithm was inspired and adapted from the following sources:
 http://stackoverflow.com/questions/15911783/what-are-some-common-focus-stacking-algorithms

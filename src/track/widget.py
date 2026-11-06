@@ -20,6 +20,7 @@ from .data_models import (
     SegmentationRequestNN,
     SegmentationResult,
     CalculationRequest,
+    SaveCalcData,
 )
 from .services.segmentation import (
     SegmentationServiceClassic,
@@ -46,6 +47,8 @@ OBJECTIVE_PX_PER_UM = {
     Objective.X50: 14.53,
     Objective.X100: 29.55,
 }
+
+
 def gen_grain_number(layer_name: str) -> str:
     # finds numbers in str
     match = re.search(r"\d+", layer_name)
@@ -55,12 +58,13 @@ def gen_grain_number(layer_name: str) -> str:
         grain_number = "0"
     return grain_number
 
+
 class MainWidget(Container):
     def __init__(self, viewer: "napari.Viewer", mmc_core: CMMCorePlus):
         super().__init__()
 
         self._viewer = viewer
-        
+
         self._mmc = mmc_core
         try:
             self._mmc.mda.events.sequenceStarted.disconnect()
@@ -71,10 +75,14 @@ class MainWidget(Container):
             pass
         self._mmc.mda.events.frameReady.connect(self.on_mda_frame)
         self._mmc.mda.events.sequenceFinished.connect(self.on_mda_finished)
-        
+
         self._frame_buffer = []
-        self._pos_before_mda: Position = Position(x=self._mmc.getXPosition(), y=self._mmc.getYPosition(), z=self._mmc.getZPosition())
-        
+        self._pos_before_mda: Position = Position(
+            x=self._mmc.getXPosition(),
+            y=self._mmc.getYPosition(),
+            z=self._mmc.getZPosition(),
+        )
+
         self._segmentation_service = SegmentationServiceClassic()
         self._layers_service = NapariLayersService(self._viewer)
         self._calculations_service = CalculationService()
@@ -190,10 +198,8 @@ class MainWidget(Container):
             value=app_conf.config_instance.settings.sample_dir,
         )
         self._focus_stack = create_widget(label="Focus stack", widget_type="PushButton")
-        self._z_stack = create_widget(label='z_stack', widget_type="PushButton")
-        self._swap_chb = create_widget(
-            label="Swap refl&trans", widget_type="CheckBox"
-        )
+        self._z_stack = create_widget(label="z_stack", widget_type="PushButton")
+        self._swap_chb = create_widget(label="Swap refl&trans", widget_type="CheckBox")
 
     def _start_segmentation(self):
         """Starts segmentation worker process"""
@@ -246,7 +252,7 @@ class MainWidget(Container):
         else:
             right_layer = refl_layer
             right_img = refl_img
-        
+
         # prepare ROI mask
         roi_shapes_layer = self._roi_layer.value
         mask, area = shapes_to_mask_and_area(
@@ -322,15 +328,15 @@ class MainWidget(Container):
         if refl_image_layer is None or tr_image_layer is None:
             show_warning("There is nothing to allign")
             return
-        
-        #if not checked then base mode: trans on the right, refl on the left
+
+        # if not checked then base mode: trans on the right, refl on the left
         if not self._swap_chb.value:
             left_layer = refl_image_layer
             right_layer = tr_image_layer
         else:
             left_layer = tr_image_layer
             right_layer = refl_image_layer
-        
+
         try:
             translation = self._layers_service.calc_layer_translation(left_layer)
         except Exception as exc:
@@ -338,7 +344,7 @@ class MainWidget(Container):
             return
 
         other_layers = []
-        try: #this layer may be not created yet
+        try:  # this layer may be not created yet
             other_layers.append(self._viewer.layers[self._last_output_layer_name])
         except:
             pass
@@ -346,8 +352,8 @@ class MainWidget(Container):
         self._layers_service.align_layers(
             left_layer=left_layer,
             right_layer=right_layer,
-            other_layers = other_layers,
-            translation=translation
+            other_layers=other_layers,
+            translation=translation,
         )
 
     def _calc_manual(self):
@@ -364,7 +370,7 @@ class MainWidget(Container):
             self._tracks_num_output.value = 0
             self._area_output.value = 0
             return
-        
+
         if not self._swap_chb.value:
             right_layer = self._transm_image_layer.value
         else:
@@ -379,10 +385,10 @@ class MainWidget(Container):
         roi_mask, area = shapes_to_mask_and_area(roi_layer, shape, target_world_to_data)
 
         points_mask = points_to_mask(track_points_layer, shape, target_world_to_data)
-        
+
         grain_number = gen_grain_number(self._refl_image_layer.value.name)
         result_layer_name = f"{grain_number}_manual_calc"
-        
+
         self._layers_service.upsert_labels(
             points_mask * roi_mask,
             result_layer_name,
@@ -426,20 +432,27 @@ class MainWidget(Container):
                 ldt_list.append(self._viewer.layers[self._last_output_layer_name])
             except:
                 pass
-            
+
             grain_number = gen_grain_number(refl_im_layer.name)
-            
+
             dir_path = Path(self._config_service.settings.sample_dir).resolve()
 
             save_source_data(
                 ldt_list, dir_path / "source_data" / ("GRAIN_" + grain_number)
             )
-
-            uppend_result_table(
+            data_to_save = SaveCalcData(
                 grain_number,
-                self._tracks_num_output.value,
-                self._area_output.value,
-                self._density_output.value,
+                int(self._tracks_num_output.value),
+                float(self._area_output.value),
+                float(self._density_output.value),
+                round(float(self._density_output.value) * 10**8, -3),
+                int(self._tracks_num_output.value),
+                float(self._area_output.value),
+                float(self._density_output.value),
+                round(float(self._density_output.value) * 10**8, -3),
+            )
+            uppend_result_table(
+                data_to_save,
                 dir_path / "подсчет.csv",
             )
 
@@ -452,13 +465,14 @@ class MainWidget(Container):
 
     def _load_files(self, paths: tuple[Path, ...]):
         paths_set = set(paths)
-        
+
         for path in paths:
             if path.suffix != ".toml":
                 config_filename = f"{path.stem}_meta.toml"
                 settings_path = path.with_name(config_filename)
                 if settings_path in paths_set:
                     from tomllib import load
+
                     with open(settings_path, "rb") as f:
                         meta_dict = load(f)
                 else:
@@ -469,16 +483,19 @@ class MainWidget(Container):
                     show_warning(f"Error: {e}")
 
     def _stack_imgs(self):
-        imgs_list = self._viewer.layers['stack'].data
+        imgs_list = self._viewer.layers["stack"].data
         stack = self._focus_stacking_service.focus_stack(imgs_list)
-        self._viewer.add_image(stack, name='stacked')
-    
+        self._viewer.add_image(stack, name="stacked")
+
     def on_mda_frame(self, img):
         self._frame_buffer.append(img)
-    
+
     def on_mda_finished(self):
         from numpy import asarray
-        self._viewer.add_image(asarray(self._frame_buffer), multiscale=False, name='stack')
+
+        self._viewer.add_image(
+            asarray(self._frame_buffer), multiscale=False, name="stack"
+        )
         self._frame_buffer.clear()
         if self._pos_before_mda.x is not None and self._pos_before_mda.y is not None:
             self._mmc.setXYPosition(self._pos_before_mda.x, self._pos_before_mda.y)
@@ -490,9 +507,13 @@ class MainWidget(Container):
             show_warning("Saved z position is None")
 
     def _capture_z_stack(self):
-        self._pos_before_mda = Position(x=self._mmc.getXPosition(), y=self._mmc.getYPosition(), z=self._mmc.getZPosition())
+        self._pos_before_mda = Position(
+            x=self._mmc.getXPosition(),
+            y=self._mmc.getYPosition(),
+            z=self._mmc.getZPosition(),
+        )
         mda_sequence = MDASequence(
             z_plan=ZAboveBelow(go_up=True, above=3.0, below=0.0, step=0.3),
-            stage_positions=[self._pos_before_mda]
+            stage_positions=[self._pos_before_mda],
         )
         self._mmc.run_mda(mda_sequence)

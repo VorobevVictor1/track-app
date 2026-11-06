@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from numpy import ndarray, empty
-from enum import Enum
+from enum import StrEnum, Enum
 from typing import NamedTuple
 from napari.utils.transforms import Affine
 
@@ -69,9 +69,21 @@ class CalculationResult:
 
 # TODO: add integration with pymmcore_plus so objective types are not hardcoded
 # objectives magnifications for my microscope
-class Objective(str, Enum):
+class Objective(StrEnum):
     X5 = "X5"
     X10 = "X10"
     X20 = "X20"
     X50 = "X50"
     X100 = "X100"
+
+
+class SaveCalcData(NamedTuple):
+    grain_number: str
+    num_of_tracks_circ: int
+    area_circ: float
+    density_circ_um: float
+    density_circ_cm: float
+    num_of_tracks_poly: int
+    area_poly: float
+    density_poly_um: float
+    density_poly_cm: float

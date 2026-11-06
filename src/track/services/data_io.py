@@ -4,11 +4,22 @@ import csv
 import numpy as np
 import tomli_w
 import napari.layers
+from ..data_models import SaveCalcData
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-HEADER = ["grain number", "number of tracks", "Area, um^2", "Density, 1/um^2"]
+HEADER = [
+    "Grain number",
+    "Number of tracks",
+    "Area, um^2",
+    "Density, 1/um^2",
+    "Density, 1/cm^2",
+    "Number of tracks",
+    "Area, um^2",
+    "Density, 1/um^2",
+    "Density, 1/cm^2",
+]
 
 
 def save_img(data: "np.ndarray", path: "Path", extension: str):
@@ -98,24 +109,16 @@ def save_source_data(layers_list: list["napari.layers.Layer"], source_dir_path: 
             save_layer_with_points(layer, source_dir_path)
 
 
-def uppend_result_table(
-    grain_number: str, tracks_num: int, area: float, density: float, table_path: "Path"
-):
-    dict_to_write = {
-        HEADER[0]: grain_number,
-        HEADER[1]: tracks_num,
-        HEADER[2]: area,
-        HEADER[3]: density,
-    }
+def uppend_result_table(data: SaveCalcData, table_path: "Path"):
     if not table_path.is_file():
         with open(table_path, "w", newline="") as f:
-            writer = csv.DictWriter(f, HEADER, delimiter=";")
-            writer.writeheader()
-            writer.writerow(dict_to_write)
+            writer = csv.writer(f, delimiter=";")
+            writer.writerow(HEADER)
+            writer.writerow(data)
     else:
         with open(table_path, "a", newline="") as f:
-            writer = csv.DictWriter(f, HEADER, delimiter=";")
-            writer.writerow(dict_to_write)
+            writer = csv.writer(f, delimiter=";")
+            writer.writerow(data)
 
 
 def save_screenshot(screenshot_array, screenshots_dir: "Path"):

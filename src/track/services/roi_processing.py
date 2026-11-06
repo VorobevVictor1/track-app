@@ -2,7 +2,7 @@ import numpy as np
 from ..data_models import ROI, ROIType
 from collections.abc import Callable
 from cv2 import fillPoly, minAreaRect, ellipse, drawMarker, MARKER_SQUARE
-#thet`s where I got square funcs from
+# thet`s where I got square funcs from
 # from napari_builtins._measure_shapes import ellipse_area, polygon_area, rectangle_area
 
 from typing import TYPE_CHECKING
@@ -196,6 +196,6 @@ def points_to_mask(
             color=1,
             markerType=MARKER_SQUARE,
             markerSize=1,
-            thickness=1, # Mask is a 1 pixel in the position of the point
+            thickness=1,  # Mask is a 1 pixel in the position of the point
         )
     return mask
