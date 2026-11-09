@@ -34,6 +34,11 @@ def gen_circle_coords(square: float, scale: float) -> np.ndarray:
 
 
 def points_text_update_cb(event):
+    curr_features = event.source.features
+    num_of_points = len(event.source.data)
+    new_features = np.arange(1, num_of_points + 1)
+    curr_features['number'] = new_features
+    event.source.features = curr_features
     event.source.text.refresh(event.source.features)
 
 
@@ -63,9 +68,11 @@ if __name__ == "__main__":
         edge_width=5,
         face_color="#ffffff00",
     )
-
+    features_p = {
+        "number": []
+    }
     text_p = {
-        "string": "{index}",
+        "string": "{number}",
         "size": 30,
         "color": "red",
         "anchor": "upper_right",
@@ -73,17 +80,18 @@ if __name__ == "__main__":
         "scaling": True,
     }
     p_l = viewer.add_points(
-        size=30, face_color="red", border_color="red", symbol="cross", text=text_p
+        size=30, face_color="red", border_color="red", symbol="cross", text=text_p, features=features_p
     )
-    p_l.events.features.connect(points_text_update_cb)
+    p_l.events.data.connect(points_text_update_cb)
 
     sh_l.locked = LayerLock.DELETION
     p_l.locked = LayerLock.DELETION
-    # nmmw = viewer.window.add_plugin_dock_widget('napari-micromanager')
+    # nmmw = viewer.window.add_plugin_dock_widget("napari-micromanager")
     mmc = CMMCorePlus.instance()
 
     mmc.loadSystemConfiguration(r"C:\Program Files\Micro-Manager\MMConfig_demo.cfg")
     # mmc.loadSystemConfiguration(r"C:\Program Files\Micro-Manager\touptek.cfg")
+    # mmc.loadSystemConfiguration(r"C:\Program Files\Micro-Manager\cam_cong.cfg")
     mmc.setAutoShutter(False)
 
     # Instantiate your widget
