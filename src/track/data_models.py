@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
-from numpy import ndarray, empty
+from numpy import empty
+from numpy.typing import NDArray
 from enum import StrEnum, Enum
 from typing import NamedTuple
 from napari.utils.transforms import Affine
@@ -8,18 +9,18 @@ from napari.utils.transforms import Affine
 # data needed for segmentation process
 @dataclass(frozen=True)
 class OutputTranforms2D:
-    affine_matrix: ndarray | Affine
+    affine_matrix: NDArray[...] | Affine
     scale: tuple[float, float]
     translate: tuple[float, float]
 
 
 @dataclass(frozen=True)
 class SegmentationImageData:
-    reflected_img: ndarray
-    transmitted_img: ndarray
+    reflected_img: NDArray[...]
+    transmitted_img: NDArray[...]
     output_layer_name: str
     transforms: OutputTranforms2D
-    roi_mask: ndarray | None = None
+    roi_mask: NDArray[...] | None = None
 
 
 @dataclass(frozen=True)
@@ -38,7 +39,7 @@ class SegmentationRequestNN:
 # result of segmentation process
 @dataclass(frozen=True)
 class SegmentationResult:
-    labels: ndarray
+    labels: NDArray[...]
 
 
 class ROIType(Enum):
@@ -47,17 +48,17 @@ class ROIType(Enum):
 
 
 class ROI(NamedTuple):
-    vertices: ndarray
+    vertices: NDArray[...]
     shape_type: str
     roi_type: ROIType = ROIType.INCLUDE
 
 
 @dataclass
 class CalculationRequest:
-    roi_mask: ndarray | None
+    roi_mask: NDArray[...] | None
     px_per_um: float
     area_px: float
-    tracks_map: ndarray = field(default_factory=lambda: empty(0))
+    tracks_map: NDArray[...] = field(default_factory=lambda: empty(0))
 
 
 @dataclass(frozen=True)

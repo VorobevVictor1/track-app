@@ -27,7 +27,7 @@ class NapariLayersService:
                 current_translation[-1] = layer.data.shape[-1]
             else:
                 raise ValueError("Currently only 2D images supported")
-            return current_translation
+            return current_translation * layer.scale
 
     def align_layers(
         self,

@@ -104,6 +104,7 @@ class MainWidget(Container):
         # connect your own callbacks
         self._run_button.clicked.connect(self._start_segmentation)
         self._align_button.clicked.connect(self._align_layers)
+        self._swap_chb.changed.connect(self._align_layers)
         self._manual_calc_button.clicked.connect(self._calc_manual)
         self._save_current_buton.clicked.connect(self._save_grain_data)
         self._load_widg.changed.connect(self._load_files)
