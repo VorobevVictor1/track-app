@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from ..data_models import (
+from ..data_model.data_models import (
     SegmentationRequestClassic,
     SegmentationRequestNN,
     SegmentationResult,

@@ -9,7 +9,7 @@ import numpy as np
 
 from src.track.widget import MainWidget, OBJECTIVE_PX_PER_UM
 import src.track.services.app_configuration as app_conf
-from src.track.data_models import Objective
+from track.data_model.data_models import Objective
 
 
 def gen_circle_coords(square: float, scale: float) -> np.ndarray:
@@ -37,7 +37,7 @@ def points_text_update_cb(event):
     curr_features = event.source.features
     num_of_points = len(event.source.data)
     new_features = np.arange(1, num_of_points + 1)
-    curr_features['number'] = new_features
+    curr_features["number"] = new_features
     event.source.features = curr_features
     event.source.text.refresh(event.source.features)
 
@@ -61,7 +61,7 @@ if __name__ == "__main__":
     viewer = napari.Viewer()
 
     CIRCLE_AREA = 962.0
-    UNITS = 'micrometer'
+    UNITS = "micrometer"
     SCALE = 1 / OBJECTIVE_PX_PER_UM[Objective.X100]
     sh_l = viewer.add_shapes(
         data=gen_circle_coords(CIRCLE_AREA, OBJECTIVE_PX_PER_UM[Objective.X100]),
@@ -69,12 +69,10 @@ if __name__ == "__main__":
         edge_color="red",
         edge_width=5,
         face_color="#ffffff00",
-        units = UNITS,
-        scale = (SCALE, SCALE)
+        units=UNITS,
+        scale=(SCALE, SCALE),
     )
-    features_p = {
-        "number": []
-    }
+    features_p = {"number": []}
     size = 30 * SCALE
     text_p = {
         "string": "{number}",
@@ -92,13 +90,12 @@ if __name__ == "__main__":
         text=text_p,
         features=features_p,
         units=UNITS,
-        scale = (SCALE, SCALE)
+        scale=(SCALE, SCALE),
     )
     p_l.events.data.connect(points_text_update_cb)
     sh_l.locked = LayerLock.DELETION
     p_l.locked = LayerLock.DELETION
 
-    
     # nmmw = viewer.window.add_plugin_dock_widget("napari-micromanager")
     mmc = CMMCorePlus.instance()
 
@@ -115,8 +112,9 @@ if __name__ == "__main__":
         my_widg, name="COMET-FTA", menu=viewer.window.window_menu
     )
     w.title.close_button.hide()
-    SCALE_BAR_LENGTH = 20 #in layer units
+    SCALE_BAR_LENGTH = 20  # in layer units
     is_scale_bar_visible = True
     viewer.canvas.overlays.scale_bar.length = SCALE_BAR_LENGTH
     viewer.canvas.overlays.scale_bar.visible = is_scale_bar_visible
+    viewer.layers.selection.select_only(sh_l)
     napari.run()

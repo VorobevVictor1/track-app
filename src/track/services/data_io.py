@@ -4,7 +4,7 @@ import csv
 import numpy as np
 import tomli_w
 import napari.layers
-from ..data_models import SaveCalcData
+from ..data_model.data_models import SaveCalcData
 
 if TYPE_CHECKING:
     from pathlib import Path

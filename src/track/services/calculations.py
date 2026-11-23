@@ -1,4 +1,4 @@
-from ..data_models import CalculationRequest, CalculationResult
+from ..data_model.data_models import CalculationRequest, CalculationResult
 import numpy as np
 from skimage.measure import label
 

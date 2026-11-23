@@ -57,8 +57,8 @@ uv run pre-commit install
 To run the application or scripts securely within the managed environment, prefix your commands with `uv run`:
 
 ```bash
-# Example: run the camera check utility
-uv run python camera_check.py
+# run the app
+uv run main.py
 ```
 
 ## Development & Quality Tools

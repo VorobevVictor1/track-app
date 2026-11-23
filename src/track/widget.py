@@ -12,7 +12,7 @@ from magicgui.widgets import Container, create_widget, ComboBox
 from napari.qt.threading import create_worker
 from napari.utils.notifications import show_warning
 
-from .data_models import (
+from .data_model.data_models import (
     Objective,
     OutputTranforms2D,
     SegmentationImageData,
@@ -22,6 +22,7 @@ from .data_models import (
     CalculationRequest,
     SaveCalcData,
 )
+from .connector.grain_layers_connector import NapariGrainConnector
 from .services.segmentation import (
     SegmentationServiceClassic,
     SegmentationServiceNN,
@@ -64,7 +65,7 @@ class MainWidget(Container):
         super().__init__()
 
         self._viewer = viewer
-
+        self.connector = NapariGrainConnector(self._viewer)
         self._mmc = mmc_core
         try:
             self._mmc.mda.events.sequenceStarted.disconnect()
@@ -102,6 +103,8 @@ class MainWidget(Container):
         self._build_ui()
 
         # connect your own callbacks
+        self._add_grain_button.clicked.connect(self._add_grain)
+        self._get_grain_button.clicked.connect(self._get_grain)
         self._run_button.clicked.connect(self._start_segmentation)
         self._align_button.clicked.connect(self._align_layers)
         self._swap_chb.changed.connect(self._align_layers)
@@ -124,6 +127,8 @@ class MainWidget(Container):
                 self._area_output,
                 self._magnification_combo,
                 self._swap_chb,
+                self._add_grain_button,
+                self._get_grain_button,
                 self._align_button,
                 self._z_stack,
                 self._focus_stack,
@@ -182,6 +187,12 @@ class MainWidget(Container):
             choices=[objective.value for objective in Objective],
             value=Objective.X100.value,
         )
+        self._add_grain_button = create_widget(
+            label="Add grain", widget_type="PushButton"
+        )
+        self._get_grain_button = create_widget(
+            label="Get grain", widget_type="PushButton"
+        )
         self._align_button = create_widget(label="Align", widget_type="PushButton")
         self._run_button = create_widget(
             label="Auto calculation", widget_type="PushButton"
@@ -201,6 +212,20 @@ class MainWidget(Container):
         self._focus_stack = create_widget(label="Focus stack", widget_type="PushButton")
         self._z_stack = create_widget(label="z_stack", widget_type="PushButton")
         self._swap_chb = create_widget(label="Swap refl&trans", widget_type="CheckBox")
+
+    def _add_grain(self):
+        from .data_model.grain_cls import Grain
+        import numpy as np
+
+        grain = Grain(
+            1,
+            np.zeros((1024, 1024, 3), dtype=np.uint8),
+            np.zeros((1024, 1024, 3), dtype=np.uint8),
+        )
+        self.connector.add_grain(grain)
+
+    def _get_grain(self):
+        print(self.connector.get_grain_binding(1))
 
     def _start_segmentation(self):
         """Starts segmentation worker process"""

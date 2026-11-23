@@ -1,5 +1,5 @@
 import numpy as np
-from ..data_models import ROI, ROIType
+from ..data_model.data_models import ROI, ROIType
 from collections.abc import Callable
 from cv2 import fillPoly, minAreaRect, ellipse, drawMarker, MARKER_SQUARE
 # thet`s where I got square funcs from

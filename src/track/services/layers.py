@@ -5,7 +5,7 @@ if TYPE_CHECKING:
     import napari.layers
 import numpy as np
 from napari.utils.transforms import Affine
-from ..data_models import OutputTranforms2D
+from ..data_model.data_models import OutputTranforms2D
 
 
 class NapariLayersService:
