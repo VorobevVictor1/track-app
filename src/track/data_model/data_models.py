@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from numpy import empty
+from numpy import empty, float32
 from numpy.typing import NDArray
 from enum import StrEnum, Enum
 from typing import NamedTuple
@@ -41,6 +41,10 @@ class SegmentationRequestNN:
 class SegmentationResult:
     labels: NDArray[...]
 
+class ROIShapeTypes(StrEnum):
+    POLYGON = "polygon"
+    RECTANGLE = "rectangle"
+    ELLIPSE = "ellipse"
 
 class ROIType(Enum):
     INCLUDE = 1
@@ -48,7 +52,7 @@ class ROIType(Enum):
 
 
 class ROI(NamedTuple):
-    vertices: NDArray[...]
+    vertices: NDArray[float32]
     shape_type: str
     roi_type: ROIType = ROIType.INCLUDE
 

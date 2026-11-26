@@ -71,7 +71,7 @@ def instance_segment(
     if img_transmitted.ndim > 3 or img_reflected.ndim > 3:
         raise ValueError("Only 2D images are currently supported")
     if img_transmitted.shape[:2] != img_reflected.shape[:2]:
-        raise ValueError("Shapes of images are not the same")
+        raise ValueError("Size of images are not the same")
 
     # TODO auto selection of gray level
     # returns high pass img with flat background level

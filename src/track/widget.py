@@ -22,7 +22,7 @@ from .data_model.data_models import (
     CalculationRequest,
     SaveCalcData,
 )
-from .connector.grain_layers_connector import NapariGrainConnector
+from .connector.grain_layers_connector import NapariGrainConnector, LayerRole
 from .services.segmentation import (
     SegmentationServiceClassic,
     SegmentationServiceNN,
@@ -65,14 +65,14 @@ class MainWidget(Container):
         super().__init__()
 
         self._viewer = viewer
-        self.connector = NapariGrainConnector(self._viewer)
+        self.grains_connector = NapariGrainConnector(self._viewer)
         self._mmc = mmc_core
         try:
             self._mmc.mda.events.sequenceStarted.disconnect()
             self._mmc.mda.events.sequenceFinished.disconnect()
             self._mmc.mda.events.frameReady.disconnect()
         except TypeError:
-            # Сигнал не был ни к чему подключен, игнорируем ошибку
+            # MDA event wasnt connected to anything
             pass
         self._mmc.mda.events.frameReady.connect(self.on_mda_frame)
         self._mmc.mda.events.sequenceFinished.connect(self.on_mda_finished)
@@ -103,7 +103,7 @@ class MainWidget(Container):
         self._build_ui()
 
         # connect your own callbacks
-        self._add_grain_button.clicked.connect(self._add_grain)
+        self._create_grain_button.clicked.connect(self._create_grain)
         self._get_grain_button.clicked.connect(self._get_grain)
         self._run_button.clicked.connect(self._start_segmentation)
         self._align_button.clicked.connect(self._align_layers)
@@ -113,13 +113,11 @@ class MainWidget(Container):
         self._load_widg.changed.connect(self._load_files)
         self._focus_stack.clicked.connect(self._stack_imgs)
         self._z_stack.clicked.connect(self._capture_z_stack)
+        self._grains.changed.connect(self.grains_connector.set_active_grain)
         # append into/extend the container with your widgets
         self.extend(
             [
-                self._refl_image_layer,
-                self._transm_image_layer,
-                self._roi_layer,
-                self._track_points_layer,
+                self._grains,
                 self._sigma_slider,
                 self._gray_slider,
                 self._density_output,
@@ -127,7 +125,7 @@ class MainWidget(Container):
                 self._area_output,
                 self._magnification_combo,
                 self._swap_chb,
-                self._add_grain_button,
+                self._create_grain_button,
                 self._get_grain_button,
                 self._align_button,
                 self._z_stack,
@@ -141,18 +139,6 @@ class MainWidget(Container):
 
     def _build_ui(self):
         """Initializes ui elements for widget"""
-        self._transm_image_layer = create_widget(
-            label="Transmitted", annotation="napari.layers.Image"
-        )
-        self._refl_image_layer = create_widget(
-            label="Reflected", annotation="napari.layers.Image"
-        )
-        self._roi_layer = create_widget(
-            label="ROI (Shapes)", annotation="napari.layers.Shapes"
-        )
-        self._track_points_layer = create_widget(
-            label="Track points layer", annotation="napari.layers.Points"
-        )
         self._sigma_slider = create_widget(
             label="Sigma",
             annotation=float,
@@ -187,8 +173,8 @@ class MainWidget(Container):
             choices=[objective.value for objective in Objective],
             value=Objective.X100.value,
         )
-        self._add_grain_button = create_widget(
-            label="Add grain", widget_type="PushButton"
+        self._create_grain_button = create_widget(
+            label="Create grain", widget_type="PushButton"
         )
         self._get_grain_button = create_widget(
             label="Get grain", widget_type="PushButton"
@@ -212,21 +198,37 @@ class MainWidget(Container):
         self._focus_stack = create_widget(label="Focus stack", widget_type="PushButton")
         self._z_stack = create_widget(label="z_stack", widget_type="PushButton")
         self._swap_chb = create_widget(label="Swap refl&trans", widget_type="CheckBox")
-
-    def _add_grain(self):
-        from .data_model.grain_cls import Grain
-        import numpy as np
-
-        grain = Grain(
-            1,
-            np.zeros((1024, 1024, 3), dtype=np.uint8),
-            np.zeros((1024, 1024, 3), dtype=np.uint8),
+        self._grains = ComboBox(
+            label="Current grain",
+            choices=self.grains_connector._bindings_dict.keys(),
+            value=None,
+            nullable=True
         )
-        self.connector.add_grain(grain)
+
+    GRAIN_NUM = 0
+    def _create_grain(self):
+        from .data_model.grain_cls import Grain
+        # grain = Grain(
+        #     self.GRAIN_NUM,
+        #     self._mmc.snap(),
+        #     self._mmc.snap(),
+        # )
+        from cv2 import imread, cvtColor, COLOR_BGR2RGB
+        grain = Grain(
+            self.GRAIN_NUM,
+            cvtColor(imread(r"C:\Users\vivor\Desktop\Test-for-VV\1b.jpg"),COLOR_BGR2RGB),
+            cvtColor(imread(r"C:\Users\vivor\Desktop\Test-for-VV\1a.jpg"),COLOR_BGR2RGB),
+        )
+        self.grains_connector.create_grain(grain, 1/OBJECTIVE_PX_PER_UM[Objective.X100], "micrometer")
+        self._grains.reset_choices()
+        self._grains.value = self.GRAIN_NUM
+        self.GRAIN_NUM += 1
 
     def _get_grain(self):
-        print(self.connector.get_grain_binding(1))
-
+        binding = self.grains_connector.active_grain_binding
+        print(binding)
+        print(binding.grain.roi_list)
+    
     def _start_segmentation(self):
         """Starts segmentation worker process"""
         if self._worker is not None and self._worker.is_running:
@@ -257,8 +259,10 @@ class MainWidget(Container):
     ) -> tuple[SegmentationRequestClassic | SegmentationRequestNN, CalculationRequest]:
         """Creates a data snapshot for segmentation worker"""
         # prepare images
-        refl_layer = self._refl_image_layer.value
-        tr_layer = self._transm_image_layer.value
+        if self.grains_connector.active_grain_binding is not None:
+            curr_bind = self.grains_connector.active_grain_binding
+        refl_layer = curr_bind.layers_dict[LayerRole.REFL_SURFACE_IMAGE]
+        tr_layer = curr_bind.layers_dict[LayerRole.TRANSM_SURFACE_IMAGE]
 
         if tr_layer is None or refl_layer is None:
             raise ValueError("Select both transmitted and reflected image")
@@ -280,7 +284,7 @@ class MainWidget(Container):
             right_img = refl_img
 
         # prepare ROI mask
-        roi_shapes_layer = self._roi_layer.value
+        roi_shapes_layer = curr_bind.layers_dict[LayerRole.ROI_SHAPES_INTERACTIVE]
         mask, area = shapes_to_mask_and_area(
             roi_shapes_layer, right_img.shape[:2], right_layer.world_to_data
         )
@@ -348,8 +352,10 @@ class MainWidget(Container):
         self._current_calc_request = None
 
     def _align_layers(self):
-        refl_image_layer = self._refl_image_layer.value
-        tr_image_layer = self._transm_image_layer.value
+        if self.grains_connector.active_grain_binding is not None:
+            curr_bind = self.grains_connector.active_grain_binding
+        refl_image_layer = curr_bind.layers_dict[LayerRole.REFL_SURFACE_IMAGE]
+        tr_image_layer = curr_bind.layers_dict[LayerRole.TRANSM_SURFACE_IMAGE]
 
         if refl_image_layer is None or tr_image_layer is None:
             show_warning("There is nothing to allign")
@@ -371,7 +377,7 @@ class MainWidget(Container):
 
         other_layers = []
         try:  # this layer may be not created yet
-            other_layers.append(self._viewer.layers[self._last_output_layer_name])
+            other_layers.append(self._viewer.layers[self._last_output_layer_name]) #FIXME
         except:
             pass
 
@@ -384,8 +390,10 @@ class MainWidget(Container):
 
     def _calc_manual(self):
         # get layers
-        roi_layer = self._roi_layer.value
-        track_points_layer = self._track_points_layer.value
+        if self.grains_connector.active_grain_binding is not None:
+            curr_bind = self.grains_connector.active_grain_binding
+        roi_layer = curr_bind.layers_dict[LayerRole.ROI_SHAPES_INTERACTIVE]
+        track_points_layer = curr_bind.layers_dict[LayerRole.TRACK_POINTS_INTERACTIVE]
         if track_points_layer is None:
             raise ValueError("Track points layer is not stated.")
 
@@ -398,9 +406,9 @@ class MainWidget(Container):
             return
 
         if not self._swap_chb.value:
-            right_layer = self._transm_image_layer.value
+            right_layer = curr_bind.layers_dict[LayerRole.TRANSM_SURFACE_IMAGE]
         else:
-            right_layer = self._refl_image_layer.value
+            right_layer = curr_bind.layers_dict[LayerRole.REFL_SURFACE_IMAGE]
 
         if right_layer is not None:
             shape = right_layer.data.shape[:2]
@@ -412,7 +420,7 @@ class MainWidget(Container):
 
         points_mask = points_to_mask(track_points_layer, shape, target_world_to_data)
 
-        grain_number = gen_grain_number(self._refl_image_layer.value.name)
+        grain_number = self._grains.value
         result_layer_name = f"{grain_number}_manual_calc"
 
         self._layers_service.upsert_labels(
@@ -446,25 +454,27 @@ class MainWidget(Container):
     def _save_grain_data(self):
         self._save_current_buton.enabled = False
         try:
-            refl_im_layer = self._refl_image_layer.value
-            trans_im_layer = self._transm_image_layer.value
+            if self.grains_connector.active_grain_binding is not None:
+                curr_bind = self.grains_connector.active_grain_binding
+            refl_im_layer = curr_bind.layers_dict[LayerRole.REFL_SURFACE_IMAGE]
+            trans_im_layer = curr_bind.layers_dict[LayerRole.TRANSM_SURFACE_IMAGE]
             ldt_list = [
-                refl_im_layer,
-                trans_im_layer,
-                self._roi_layer.value,
-                self._track_points_layer.value,
+                curr_bind.layers_dict[LayerRole.REFL_SURFACE_IMAGE],
+                curr_bind.layers_dict[LayerRole.TRANSM_SURFACE_IMAGE],
+                curr_bind.layers_dict[LayerRole.ROI_SHAPES_INTERACTIVE],
+                curr_bind.layers_dict[LayerRole.TRACK_POINTS_INTERACTIVE],
             ]
             try:
-                ldt_list.append(self._viewer.layers[self._last_output_layer_name])
+                ldt_list.append(self._viewer.layers[self._last_output_layer_name])#FIXME
             except:
                 pass
 
-            grain_number = gen_grain_number(refl_im_layer.name)
+            grain_number = self._grains.value
 
             dir_path = Path(self._config_service.settings.sample_dir).resolve()
 
             save_source_data(
-                ldt_list, dir_path / "source_data" / ("GRAIN_" + grain_number)
+                ldt_list, dir_path / "source_data" / ("GRAIN_" + str(grain_number))
             )
             data_to_save = SaveCalcData(
                 grain_number,
@@ -484,7 +494,7 @@ class MainWidget(Container):
 
             screenshot = self._viewer.export_figure(path=None, scale_factor=0.5)
             save_screenshot(
-                screenshot, dir_path / "screenshots" / (grain_number + ".jpg")
+                screenshot, dir_path / "screenshots" / (str(grain_number) + ".jpg")
             )
         finally:
             self._save_current_buton.enabled = True
@@ -511,7 +521,9 @@ class MainWidget(Container):
     def _stack_imgs(self):
         imgs_list = self._viewer.layers["stack"].data
         stack = self._focus_stacking_service.focus_stack(imgs_list)
-        self._viewer.add_image(stack, name="stacked")
+        self._viewer.add_image(stack, name="stacked", 
+                               units="micrometer",
+                               scale=(1 / OBJECTIVE_PX_PER_UM[Objective.X100], 1 / OBJECTIVE_PX_PER_UM[Objective.X100]))
 
     def on_mda_frame(self, img):
         self._frame_buffer.append(img)
@@ -520,7 +532,8 @@ class MainWidget(Container):
         from numpy import asarray
 
         self._viewer.add_image(
-            asarray(self._frame_buffer), multiscale=False, name="stack"
+            asarray(self._frame_buffer), multiscale=False, name="stack",
+            units="micrometer", scale=(1 / OBJECTIVE_PX_PER_UM[Objective.X100], 1 / OBJECTIVE_PX_PER_UM[Objective.X100])
         )
         self._frame_buffer.clear()
         if self._pos_before_mda.x is not None and self._pos_before_mda.y is not None:

@@ -103,6 +103,10 @@ if __name__ == "__main__":
     # mmc.loadSystemConfiguration(r"C:\Program Files\Micro-Manager\touptek.cfg")
     # mmc.loadSystemConfiguration(r"C:\Program Files\Micro-Manager\cam_cong.cfg")
     mmc.setAutoShutter(False)
+    mmc.setProperty("Camera", "PixelType", "32bitRGB")
+    mmc.setProperty("Camera", "OnCameraCCDXSize", 4096)
+    mmc.setProperty("Camera", "OnCameraCCDYSize", 2160)
+    mmc.setExposure(50)
 
     # Instantiate your widget
     my_widg = MainWidget(viewer, mmc)

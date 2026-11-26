@@ -49,7 +49,7 @@ class NapariLayersService:
             layer = self._viewer.layers[name]
             layer.data = data
         except KeyError:
-            layer = self._viewer.add_labels(data, name=name)
+            layer = self._viewer.add_labels(data, name=name, units="micrometer")
 
         layer.translate = output_transforms.translate
         layer.affine = output_transforms.affine_matrix
