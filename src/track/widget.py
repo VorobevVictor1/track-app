@@ -202,24 +202,33 @@ class MainWidget(Container):
             label="Current grain",
             choices=self.grains_connector._bindings_dict.keys(),
             value=None,
-            nullable=True
+            nullable=True,
         )
 
     GRAIN_NUM = 0
+
     def _create_grain(self):
         from .data_model.grain_cls import Grain
+
         # grain = Grain(
         #     self.GRAIN_NUM,
         #     self._mmc.snap(),
         #     self._mmc.snap(),
         # )
         from cv2 import imread, cvtColor, COLOR_BGR2RGB
+
         grain = Grain(
             self.GRAIN_NUM,
-            cvtColor(imread(r"C:\Users\vivor\Desktop\Test-for-VV\1b.jpg"),COLOR_BGR2RGB),
-            cvtColor(imread(r"C:\Users\vivor\Desktop\Test-for-VV\1a.jpg"),COLOR_BGR2RGB),
+            cvtColor(
+                imread(r"C:\Users\vivor\Desktop\Test-for-VV\1b.jpg"), COLOR_BGR2RGB
+            ),
+            cvtColor(
+                imread(r"C:\Users\vivor\Desktop\Test-for-VV\1a.jpg"), COLOR_BGR2RGB
+            ),
         )
-        self.grains_connector.create_grain(grain, 1/OBJECTIVE_PX_PER_UM[Objective.X100], "micrometer")
+        self.grains_connector.create_grain(
+            grain, 1 / OBJECTIVE_PX_PER_UM[Objective.X100], "micrometer"
+        )
         self._grains.reset_choices()
         self._grains.value = self.GRAIN_NUM
         self.GRAIN_NUM += 1
@@ -228,7 +237,7 @@ class MainWidget(Container):
         binding = self.grains_connector.active_grain_binding
         print(binding)
         print(binding.grain.roi_list)
-    
+
     def _start_segmentation(self):
         """Starts segmentation worker process"""
         if self._worker is not None and self._worker.is_running:
@@ -377,7 +386,9 @@ class MainWidget(Container):
 
         other_layers = []
         try:  # this layer may be not created yet
-            other_layers.append(self._viewer.layers[self._last_output_layer_name]) #FIXME
+            other_layers.append(
+                self._viewer.layers[self._last_output_layer_name]
+            )  # FIXME
         except:
             pass
 
@@ -465,7 +476,9 @@ class MainWidget(Container):
                 curr_bind.layers_dict[LayerRole.TRACK_POINTS_INTERACTIVE],
             ]
             try:
-                ldt_list.append(self._viewer.layers[self._last_output_layer_name])#FIXME
+                ldt_list.append(
+                    self._viewer.layers[self._last_output_layer_name]
+                )  # FIXME
             except:
                 pass
 
@@ -521,9 +534,15 @@ class MainWidget(Container):
     def _stack_imgs(self):
         imgs_list = self._viewer.layers["stack"].data
         stack = self._focus_stacking_service.focus_stack(imgs_list)
-        self._viewer.add_image(stack, name="stacked", 
-                               units="micrometer",
-                               scale=(1 / OBJECTIVE_PX_PER_UM[Objective.X100], 1 / OBJECTIVE_PX_PER_UM[Objective.X100]))
+        self._viewer.add_image(
+            stack,
+            name="stacked",
+            units="micrometer",
+            scale=(
+                1 / OBJECTIVE_PX_PER_UM[Objective.X100],
+                1 / OBJECTIVE_PX_PER_UM[Objective.X100],
+            ),
+        )
 
     def on_mda_frame(self, img):
         self._frame_buffer.append(img)
@@ -532,8 +551,14 @@ class MainWidget(Container):
         from numpy import asarray
 
         self._viewer.add_image(
-            asarray(self._frame_buffer), multiscale=False, name="stack",
-            units="micrometer", scale=(1 / OBJECTIVE_PX_PER_UM[Objective.X100], 1 / OBJECTIVE_PX_PER_UM[Objective.X100])
+            asarray(self._frame_buffer),
+            multiscale=False,
+            name="stack",
+            units="micrometer",
+            scale=(
+                1 / OBJECTIVE_PX_PER_UM[Objective.X100],
+                1 / OBJECTIVE_PX_PER_UM[Objective.X100],
+            ),
         )
         self._frame_buffer.clear()
         if self._pos_before_mda.x is not None and self._pos_before_mda.y is not None:

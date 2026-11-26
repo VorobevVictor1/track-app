@@ -133,13 +133,14 @@ def _background_correction(
         grayscale = img.astype(np.uint8)
 
     # Create a low-pass filtered version
-    low_pass = cv2.GaussianBlur(grayscale, (0, 0), sigma)
+    grayfloat = grayscale.astype(np.float32)
+    low_pass = cv2.GaussianBlur(grayfloat, (0, 0), sigma)
 
     # Subtract low frequencies from the original image
     # We add 128 to shift the neutral gray level to the center
-    high_pass = cv2.addWeighted(grayscale, 1.0, low_pass, -1.0, gray_level)
+    high_pass = cv2.addWeighted(grayfloat, 1.0, low_pass, -1.0, gray_level)
 
-    return high_pass
+    return np.clip(high_pass, 0, 255).astype(np.uint8)
 
 
 def _features_exctraction(img: np.ndarray) -> np.ndarray:

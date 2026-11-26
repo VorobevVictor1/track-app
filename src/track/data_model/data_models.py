@@ -41,10 +41,12 @@ class SegmentationRequestNN:
 class SegmentationResult:
     labels: NDArray[...]
 
+
 class ROIShapeTypes(StrEnum):
     POLYGON = "polygon"
     RECTANGLE = "rectangle"
     ELLIPSE = "ellipse"
+
 
 class ROIType(Enum):
     INCLUDE = 1
