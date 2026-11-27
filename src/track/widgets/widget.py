@@ -12,7 +12,7 @@ from magicgui.widgets import Container, create_widget, ComboBox
 from napari.qt.threading import create_worker
 from napari.utils.notifications import show_warning
 
-from .data_model.data_models import (
+from ..data_model.data_models import (
     Objective,
     OutputTranforms2D,
     SegmentationImageData,
@@ -22,21 +22,23 @@ from .data_model.data_models import (
     CalculationRequest,
     SaveCalcData,
 )
-from .connector.grain_layers_connector import NapariGrainConnector, LayerRole
-from .services.segmentation import (
+from ..connector.grain_layers_connector import NapariGrainConnector, LayerRole
+from ..services.segmentation import (
     SegmentationServiceClassic,
     SegmentationServiceNN,
 )  # TODO: add segmentation mode selection
-from .services.calculations import CalculationService
-from .services.layers import NapariLayersService
-from .services.roi_processing import shapes_to_mask_and_area, points_to_mask
-from .services import app_configuration as app_conf
-from .services.data_io import (
+from ..services.calculations import CalculationService
+from ..services.layers import NapariLayersService
+from ..services.roi_processing import shapes_to_mask_and_area, points_to_mask
+from src.track.services import app_configuration as app_conf
+from ..services.data_io import (
     uppend_result_table,
     save_source_data,
     save_screenshot,
 )
-from .services.focus_stacking import FocusStacker
+from ..services.focus_stacking import FocusStacker
+from .grain_creation_wizard import ObjectWizard
+from PyQt6.QtCore import Qt
 
 
 # TODO: заменить на mmc.getPixelSizeUm в коде где надо. Добавить увеличения и объективы в mm_config
@@ -205,20 +207,27 @@ class MainWidget(Container):
             nullable=True,
         )
 
-    GRAIN_NUM = 0
+    grain_num = 0
 
     def _create_grain(self):
-        from .data_model.grain_cls import Grain
+        from ..data_model.grain_cls import Grain
 
         # grain = Grain(
-        #     self.GRAIN_NUM,
+        #     self.grain_num,
         #     self._mmc.snap(),
         #     self._mmc.snap(),
         # )
         from cv2 import imread, cvtColor, COLOR_BGR2RGB
 
+        w = ObjectWizard(
+            parent=self._viewer.window._qt_viewer,
+            default_id=self.grain_num,
+            microscope_controller=self._mmc,
+        )
+        self.wizard = w
+        self.wizard.show()
         grain = Grain(
-            self.GRAIN_NUM,
+            self.grain_num,
             cvtColor(
                 imread(r"C:\Users\vivor\Desktop\Test-for-VV\1b.jpg"), COLOR_BGR2RGB
             ),
@@ -226,12 +235,12 @@ class MainWidget(Container):
                 imread(r"C:\Users\vivor\Desktop\Test-for-VV\1a.jpg"), COLOR_BGR2RGB
             ),
         )
-        self.grains_connector.create_grain(
+        self.grains_connector.create_grain_binding(
             grain, 1 / OBJECTIVE_PX_PER_UM[Objective.X100], "micrometer"
         )
         self._grains.reset_choices()
-        self._grains.value = self.GRAIN_NUM
-        self.GRAIN_NUM += 1
+        self._grains.value = self.grain_num
+        self.grain_num += 1
 
     def _get_grain(self):
         binding = self.grains_connector.active_grain_binding

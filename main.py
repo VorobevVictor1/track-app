@@ -7,7 +7,7 @@ from tomllib import TOMLDecodeError
 from math import pi, sqrt
 import numpy as np
 
-from src.track.widget import MainWidget, OBJECTIVE_PX_PER_UM
+from track.widgets.widget import MainWidget, OBJECTIVE_PX_PER_UM
 import src.track.services.app_configuration as app_conf
 from track.data_model.data_models import Objective
 

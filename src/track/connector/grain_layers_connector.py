@@ -49,7 +49,7 @@ class NapariGrainConnector:
         self._bindings_dict: dict[int, GrainBinding] = {}
         self.active_grain_binding: GrainBinding | None = None
 
-    def create_grain(self, grain: Grain, scale: float, units: str):
+    def create_grain_binding(self, grain: Grain, scale: float, units: str):
         if grain.number in self._bindings_dict:
             raise ValueError(f"Grain {grain.number} already exists.")
         binding = GrainBinding(grain)
